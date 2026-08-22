@@ -52,6 +52,19 @@ public:
             String json;
             serializeJson(response, json);
             characteristic->setValue(json.c_str());
+        } else if (strcmp(action, "reset_daily") == 0) {
+            Serial.println("[BLE] 收到重設今日喝水量命令，已重設為 0 ml");
+            if (_service._tracker != nullptr) {
+                _service._tracker->resetDailyTotal();
+            }
+            _service._todayTotalMl = 0;
+            _service.updateSummary(0, _service._dailyGoalMl, _service._currentWeight, _service._isScaleStable);
+            JsonDocument response;
+            response["success"] = true;
+            response["action"] = "reset_daily";
+            String json;
+            serializeJson(response, json);
+            characteristic->setValue(json.c_str());
         }
     }
 
@@ -93,6 +106,7 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     const String advertisedName = String(BleProtocol::DEVICE_NAME_PREFIX) + suffix;
 
     BLEDevice::init(advertisedName.c_str());
+    BLEDevice::setMTU(517);
     _impl = new Impl();
     _impl->server = BLEDevice::createServer();
     BLEService* service = _impl->server->createService(BleProtocol::SERVICE_UUID);
@@ -264,7 +278,12 @@ void BleWaterService::replayAfter(const String& afterEventId) {
 void BleWaterService::notifySyncComplete() {
     JsonDocument document;
     document["type"] = "sync_complete";
-    document["latestEventId"] = latestEventId();
+    String latestId = latestEventId();
+    if (latestId.length() == 0) {
+        document["latestEventId"] = nullptr;
+    } else {
+        document["latestEventId"] = latestId;
+    }
     String json;
     serializeJson(document, json);
     _impl->historySync->setValue(json.c_str());
