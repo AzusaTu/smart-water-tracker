@@ -4,6 +4,7 @@
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include <BLE2902.h>
 
 class BleWaterService::Impl {
 public:
@@ -63,6 +64,7 @@ void BleWaterService::begin(const String& deviceId) {
 
     _impl->liveEvent = service->createCharacteristic(
         BleProtocol::LIVE_EVENT_UUID, BLECharacteristic::PROPERTY_NOTIFY);
+    _impl->liveEvent->addDescriptor(new BLE2902());
 
     _impl->summary = service->createCharacteristic(
         BleProtocol::SUMMARY_UUID, BLECharacteristic::PROPERTY_READ);
@@ -72,6 +74,7 @@ void BleWaterService::begin(const String& deviceId) {
     _impl->historySync = service->createCharacteristic(
         BleProtocol::HISTORY_SYNC_UUID,
         BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+    _impl->historySync->addDescriptor(new BLE2902());
     _impl->historySync->setCallbacks(new WaterHistorySyncCallbacks(*this));
 
     service->start();
