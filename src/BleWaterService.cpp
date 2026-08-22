@@ -114,7 +114,7 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
 
     _impl->command = service->createCharacteristic(
         BleProtocol::COMMAND_UUID,
-        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ);
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_READ);
     _impl->command->setCallbacks(new WaterCommandCallbacks(*this));
 
     service->start();
@@ -126,7 +126,7 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
 
 void BleWaterService::tare() {
     if (_scale != nullptr) {
-        _scale->tare(15);
+        _scale->tare(3);
         _currentWeight = _scale->getFilteredWeight();
         _isScaleStable = _scale->isStable();
     } else {
