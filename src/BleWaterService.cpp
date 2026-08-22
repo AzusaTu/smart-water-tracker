@@ -1,10 +1,11 @@
 #include "BleWaterService.h"
-
 #include <ArduinoJson.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include "ScaleManager.h"
+#include "DrinkTracker.h"
 
 class BleWaterService::Impl {
 public:
@@ -12,6 +13,7 @@ public:
     BLECharacteristic* liveEvent = nullptr;
     BLECharacteristic* summary = nullptr;
     BLECharacteristic* historySync = nullptr;
+    BLECharacteristic* command = nullptr;
 };
 
 class WaterSummaryCallbacks final : public BLECharacteristicCallbacks {
@@ -20,6 +22,37 @@ public:
 
     void onRead(BLECharacteristic* characteristic) override {
         characteristic->setValue(_service.summaryJson().c_str());
+    }
+
+private:
+    BleWaterService& _service;
+};
+
+class WaterCommandCallbacks final : public BLECharacteristicCallbacks {
+public:
+    explicit WaterCommandCallbacks(BleWaterService& service) : _service(service) {}
+
+    void onWrite(BLECharacteristic* characteristic) override {
+        const String value = characteristic->getValue();
+        JsonDocument request;
+        const DeserializationError error = deserializeJson(request, value);
+        if (error) {
+            Serial.println("[BLE] command JSON 格式錯誤");
+            return;
+        }
+
+        const char* action = request["action"] | "";
+        if (strcmp(action, "tare") == 0) {
+            Serial.println("[BLE] 收到去皮 (Tare) 命令，開始執行...");
+            _service.tare();
+            JsonDocument response;
+            response["success"] = true;
+            response["action"] = "tare";
+            response["currentWeight"] = _service._currentWeight;
+            String json;
+            serializeJson(response, json);
+            characteristic->setValue(json.c_str());
+        }
     }
 
 private:
@@ -50,8 +83,10 @@ private:
 
 BleWaterService::BleWaterService(const String& deviceId) : _deviceId(deviceId) {}
 
-void BleWaterService::begin(const String& deviceId) {
+void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTracker* tracker) {
     _deviceId = deviceId;
+    _scale = scale;
+    _tracker = tracker;
     const String suffix = _deviceId.length() >= 4
         ? _deviceId.substring(_deviceId.length() - 4)
         : _deviceId;
@@ -77,6 +112,11 @@ void BleWaterService::begin(const String& deviceId) {
     _impl->historySync->addDescriptor(new BLE2902());
     _impl->historySync->setCallbacks(new WaterHistorySyncCallbacks(*this));
 
+    _impl->command = service->createCharacteristic(
+        BleProtocol::COMMAND_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ);
+    _impl->command->setCallbacks(new WaterCommandCallbacks(*this));
+
     service->start();
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
     advertising->addServiceUUID(BleProtocol::SERVICE_UUID);
@@ -84,9 +124,25 @@ void BleWaterService::begin(const String& deviceId) {
     Serial.printf("[BLE] 服務已啟動: %s (%s)\n", advertisedName.c_str(), _deviceId.c_str());
 }
 
-void BleWaterService::updateSummary(int todayTotalMl, int dailyGoalMl) {
+void BleWaterService::tare() {
+    if (_scale != nullptr) {
+        _scale->tare(15);
+        _currentWeight = _scale->getFilteredWeight();
+        _isScaleStable = _scale->isStable();
+    } else {
+        _currentWeight = 0.0f;
+    }
+    if (_impl != nullptr && _impl->summary != nullptr) {
+        _impl->summary->setValue(summaryJson().c_str());
+    }
+    Serial.printf("[BLE] 執行去皮完成，當前重量: %.1fg\n", _currentWeight);
+}
+
+void BleWaterService::updateSummary(int todayTotalMl, int dailyGoalMl, float currentWeight, bool isStable) {
     _todayTotalMl = todayTotalMl;
     _dailyGoalMl = dailyGoalMl;
+    _currentWeight = currentWeight;
+    _isScaleStable = isStable;
     if (_impl != nullptr && _impl->summary != nullptr) {
         _impl->summary->setValue(summaryJson().c_str());
     }
@@ -168,6 +224,8 @@ String BleWaterService::summaryJson() const {
     document["deviceId"] = _deviceId;
     document["dailyGoalMl"] = _dailyGoalMl;
     document["todayTotalMl"] = _todayTotalMl;
+    document["currentWeight"] = _currentWeight;
+    document["isStable"] = _isScaleStable;
     const String latestId = latestEventId();
     if (latestId.length() == 0) {
         document["latestEventId"] = nullptr;
@@ -197,8 +255,9 @@ void BleWaterService::replayAfter(const String& afterEventId) {
         const String json = eventJson(event);
         _impl->historySync->setValue(json.c_str());
         _impl->historySync->notify();
-        delay(15);
+        delay(20);
     }
+    delay(20);
     notifySyncComplete();
 }
 
