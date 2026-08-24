@@ -4,14 +4,19 @@
 #include <vector>
 
 #include "BleProtocol.h"
+#include "DrinkTracker.h"
 
-struct BleDrinkEvent {
+struct BleWaterEvent {
     String id;
     time_t occurredAt;
+    EventType type;
     int amountMl;
     int remainingMl;
     int todayTotalMl;
 };
+
+// Backward-compatible typedef for tests and existing references
+typedef BleWaterEvent BleDrinkEvent;
 
 class ScaleManager;
 class DrinkTracker;
@@ -24,16 +29,19 @@ public:
 
     void begin(const String& deviceId, ScaleManager* scale = nullptr, DrinkTracker* tracker = nullptr);
     void updateSummary(int todayTotalMl, int dailyGoalMl, float currentWeight = 0.0f, bool isStable = true);
+    void recordEvent(EventType type, time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
     void recordDrink(time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
+    void recordRefill(time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
     void tare();
 
     // BLE callback 跑在 BLE host task。tare 會 bit-bang HX711、reset_daily 會寫 NVS，
     // 兩者都與主迴圈競爭同一份硬體/儲存，因此 callback 只排隊、由 loop() 呼叫本函式執行。
     void processPendingCommands();
 
-    std::vector<BleDrinkEvent> eventsAfter(const String& afterEventId) const;
+    std::vector<BleWaterEvent> eventsAfter(const String& afterEventId) const;
     String latestEventId() const;
     String deviceId() const { return _deviceId; }
+    String bootSessionId() const { return _bootSessionId; }
 
 private:
     friend class WaterSummaryCallbacks;
@@ -48,13 +56,14 @@ private:
     };
 
     String _deviceId;
+    String _bootSessionId;
     // payload 一律先寫，最後才寫 _pendingCommand —— 後者是「發佈」動作
     volatile time_t _pendingEpoch = 0;
     volatile int _pendingTzOffsetMinutes = 0;
     volatile PendingCommand _pendingCommand = PENDING_NONE;
     ScaleManager* _scale = nullptr;
     DrinkTracker* _tracker = nullptr;
-    BleDrinkEvent _events[BleProtocol::EVENT_BUFFER_SIZE];
+    BleWaterEvent _events[BleProtocol::EVENT_BUFFER_SIZE];
     size_t _eventCount = 0;
     size_t _eventHead = 0;
     uint32_t _nextSequence = 0;
@@ -69,9 +78,9 @@ private:
     void applyDeviceTime(time_t epoch, int tzOffsetMinutes);
     static bool isClockSynced();
 
-    String eventJson(const BleDrinkEvent& event) const;
+    String eventJson(const BleWaterEvent& event) const;
     String summaryJson() const;
-    void publishLiveEvent(const BleDrinkEvent& event);
+    void publishLiveEvent(const BleWaterEvent& event);
     void replayAfter(const String& afterEventId);
     void notifySyncComplete();
 };

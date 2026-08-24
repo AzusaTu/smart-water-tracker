@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS devices (
   id             TEXT PRIMARY KEY,       -- Firmware deviceId (e.g., "water_abcd1234")
   user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   device_token   TEXT UNIQUE NOT NULL,   -- Authentication token for ESP32 / IoT device
+  claim_code     TEXT,                   -- Optional pairing secret / claim code for hardware ownership verification
   name           TEXT,                   -- Custom user device name
   last_seen_at   TEXT,                   -- Last communication timestamp
   created_at     TEXT DEFAULT (datetime('now'))

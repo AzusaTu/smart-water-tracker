@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { initDatabase, closeDatabase } from '../src/database/db';
+import { initDatabase, closeDatabase, getDatabase } from '../src/database/db';
 import { Express } from 'express';
 
 describe('Smart Water Tracker Backend API Test Suite', () => {
@@ -339,14 +339,22 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
     });
   });
 
-  describe('7. Security Boundaries & Multi-Tenant Isolation', () => {
+  describe('7. Security Boundaries, Multi-Tenant Isolation & Hardware Claiming', () => {
     let user2Token: string;
     let user2Id: string;
     let user2DeviceToken: string;
+    let user1ActiveDeviceId: string;
     const user2DeviceId = `water_user2_${Date.now().toString(16)}`;
     const sharedEventId = `evt_shared_${Date.now()}`;
 
     beforeAll(async () => {
+      // Bind a fresh active device for User 1
+      user1ActiveDeviceId = `water_u1_active_${Date.now().toString(16)}`;
+      await request(app)
+        .post('/api/v1/devices')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ deviceId: user1ActiveDeviceId, name: 'User 1 Active Cup' });
+
       // Register second independent user
       const res = await request(app).post('/api/v1/auth/register').send({
         email: `user2_${Date.now()}@example.com`,
@@ -364,13 +372,13 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
       user2DeviceToken = devRes.body.device.deviceToken;
     });
 
-    it('User 2 cannot spoof User 1 deviceId via User JWT (returns 403)', async () => {
-      // User 2 attempts to upload a drink record claiming testDeviceId (owned by User 1)
+    it('User 2 cannot spoof User 1 active deviceId via User JWT (returns 403)', async () => {
+      // User 2 attempts to upload a drink record claiming user1ActiveDeviceId (owned by User 1)
       const res = await request(app)
         .post('/api/v1/water/records')
         .set('Authorization', `Bearer ${user2Token}`)
         .send({
-          deviceId: testDeviceId,
+          deviceId: user1ActiveDeviceId,
           amountMl: 250,
         });
 
@@ -416,6 +424,45 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
       expect(res1Dup.body.duplicated).toBe(true);
       expect(res1Dup.body.record.userId).toBe(userId);
       expect(res1Dup.body.record.amountMl).toBe(250);
+    });
+
+    it('Hardware Claiming: claimCode transfers device ownership safely', async () => {
+      const claimDeviceId = `water_claim_${Date.now().toString(16)}`;
+      const secretClaimCode = 'CLAIM_SECRET_987';
+
+      // 1. User 1 registers device with a claimCode
+      const bind1 = await request(app)
+        .post('/api/v1/devices')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          deviceId: claimDeviceId,
+          claimCode: secretClaimCode,
+          name: 'Original Bind',
+        });
+      expect(bind1.status).toBe(201);
+
+      // 2. User 2 tries to claim without/wrong claimCode -> 409 Conflict
+      const bindWrong = await request(app)
+        .post('/api/v1/devices')
+        .set('Authorization', `Bearer ${user2Token}`)
+        .send({
+          deviceId: claimDeviceId,
+          claimCode: 'WRONG_CODE',
+        });
+      expect(bindWrong.status).toBe(409);
+
+      // 3. User 2 claims with correct claimCode -> 200 OK ownership transferred!
+      const bindCorrect = await request(app)
+        .post('/api/v1/devices')
+        .set('Authorization', `Bearer ${user2Token}`)
+        .send({
+          deviceId: claimDeviceId,
+          claimCode: secretClaimCode,
+          name: 'User 2 Claimed Cup',
+        });
+      expect(bindCorrect.status).toBe(200);
+      expect(bindCorrect.body.message).toContain('transferred');
+      expect(bindCorrect.body.device.deviceToken).toMatch(/^dvt_/);
     });
 
     it('POST /api/v1/devices/:id/token/rotate rotates token and invalidates old token', async () => {

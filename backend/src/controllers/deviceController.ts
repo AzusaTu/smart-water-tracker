@@ -6,6 +6,7 @@ import { AuthenticatedRequest, Device, DeviceResponse } from '../types';
 
 const bindDeviceSchema = z.object({
   deviceId: z.string().min(3, 'Device ID must be at least 3 characters'),
+  claimCode: z.string().optional(),
   name: z.string().optional(),
 });
 
@@ -30,7 +31,7 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
       return;
     }
 
-    const { deviceId, name } = bindDeviceSchema.parse(req.body);
+    const { deviceId, claimCode, name } = bindDeviceSchema.parse(req.body);
     const db = getDatabase();
 
     const existingDevice = db.prepare('SELECT * FROM devices WHERE id = ?').get(deviceId) as unknown as
@@ -39,14 +40,43 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
 
     if (existingDevice) {
       if (existingDevice.user_id !== userId) {
+        // If device is already claimed by someone else, check claimCode proof for hardware ownership claiming
+        if (existingDevice.claim_code && claimCode && existingDevice.claim_code === claimCode) {
+          // Valid claim code provided! Transfer device ownership to the verified owner
+          const newDeviceToken = `dvt_${crypto.randomBytes(24).toString('hex')}`;
+          const now = new Date().toISOString();
+
+          db.prepare(
+            `UPDATE devices SET user_id = ?, device_token = ?, name = ?, created_at = ? WHERE id = ?`
+          ).run(userId, newDeviceToken, name || existingDevice.name || null, now, deviceId);
+
+          const response: DeviceResponse = {
+            id: deviceId,
+            name: name || existingDevice.name || null,
+            deviceToken: newDeviceToken,
+            hasClaimCode: true,
+            lastSeenAt: existingDevice.last_seen_at,
+            isOnline: isDeviceOnline(existingDevice.last_seen_at),
+            createdAt: now,
+          };
+
+          res.status(200).json({
+            device: response,
+            message: 'Device claimed successfully via claim code. Device ownership transferred.',
+          });
+          return;
+        }
+
         res.status(409).json({ error: 'Device is already bound to another user' });
         return;
       }
+
       // If already bound to this user, return response with masked token
       const response: DeviceResponse = {
         id: existingDevice.id,
         name: existingDevice.name,
         deviceToken: maskToken(existingDevice.device_token),
+        hasClaimCode: !!existingDevice.claim_code,
         lastSeenAt: existingDevice.last_seen_at,
         isOnline: isDeviceOnline(existingDevice.last_seen_at),
         createdAt: existingDevice.created_at,
@@ -59,14 +89,15 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
     const now = new Date().toISOString();
 
     db.prepare(
-      `INSERT INTO devices (id, user_id, device_token, name, created_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(deviceId, userId, deviceToken, name || null, now);
+      `INSERT INTO devices (id, user_id, device_token, claim_code, name, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(deviceId, userId, deviceToken, claimCode || null, name || null, now);
 
     const response: DeviceResponse = {
       id: deviceId,
       name: name || null,
       deviceToken, // Full token returned ONLY on initial binding
+      hasClaimCode: !!claimCode,
       lastSeenAt: null,
       isOnline: false,
       createdAt: now,
@@ -99,6 +130,7 @@ export function listDevices(req: AuthenticatedRequest, res: Response, next: Next
       id: d.id,
       name: d.name,
       deviceToken: maskToken(d.device_token),
+      hasClaimCode: !!d.claim_code,
       lastSeenAt: d.last_seen_at,
       isOnline: isDeviceOnline(d.last_seen_at),
       createdAt: d.created_at,
@@ -196,6 +228,7 @@ export function getDeviceStatus(req: AuthenticatedRequest, res: Response, next: 
     res.status(200).json({
       deviceId: device.id,
       name: device.name,
+      hasClaimCode: !!device.claim_code,
       lastSeenAt: device.last_seen_at,
       isOnline: isDeviceOnline(device.last_seen_at),
     });

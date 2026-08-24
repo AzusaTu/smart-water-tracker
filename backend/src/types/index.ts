@@ -22,6 +22,7 @@ export interface Device {
   id: string;
   user_id: string;
   device_token: string;
+  claim_code: string | null;
   name: string | null;
   last_seen_at: string | null;
   created_at: string;
@@ -31,6 +32,7 @@ export interface DeviceResponse {
   id: string;
   name: string | null;
   deviceToken?: string;
+  hasClaimCode?: boolean;
   lastSeenAt: string | null;
   isOnline: boolean;
   createdAt: string;

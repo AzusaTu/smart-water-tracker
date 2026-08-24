@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS devices (
   id             TEXT PRIMARY KEY,
   user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   device_token   TEXT UNIQUE NOT NULL,
+  claim_code     TEXT,
   name           TEXT,
   last_seen_at   TEXT,
   created_at     TEXT DEFAULT (datetime('now'))
@@ -61,6 +62,67 @@ function loadSchemaSql(): string {
   return DEFAULT_SCHEMA_SQL;
 }
 
+/**
+ * Automatically migrates existing database schemas on disk to match current requirements.
+ */
+function migrateDatabase(db: DatabaseSync): void {
+  try {
+    const versionRow = db.prepare('PRAGMA user_version;').get() as unknown as { user_version: number } | undefined;
+    const currentVersion = versionRow?.user_version ?? 0;
+
+    if (currentVersion < 1) {
+      // Check if drink_records exists and has old global unique index on event_id
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='drink_records'").get();
+      if (tableExists) {
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS drink_records_v2 (
+            id             TEXT PRIMARY KEY,
+            event_id       TEXT,
+            user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_id      TEXT REFERENCES devices(id) ON DELETE SET NULL,
+            event_type     TEXT NOT NULL DEFAULT 'drink',
+            amount_ml      INTEGER NOT NULL,
+            remaining_ml   INTEGER,
+            occurred_at    TEXT NOT NULL,
+            synced_at      TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, event_id)
+          );
+
+          INSERT OR IGNORE INTO drink_records_v2 (id, event_id, user_id, device_id, event_type, amount_ml, remaining_ml, occurred_at, synced_at)
+          SELECT id, event_id, user_id, device_id, event_type, amount_ml, remaining_ml, occurred_at, synced_at
+          FROM drink_records;
+
+          DROP TABLE drink_records;
+          ALTER TABLE drink_records_v2 RENAME TO drink_records;
+
+          CREATE INDEX IF NOT EXISTS idx_records_user_date ON drink_records(user_id, occurred_at);
+          CREATE INDEX IF NOT EXISTS idx_records_user_event ON drink_records(user_id, event_id);
+        `);
+      }
+    }
+
+    if (currentVersion < 2) {
+      // Ensure devices table has claim_code column
+      const devicesTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='devices'").get();
+      if (devicesTableExists) {
+        const deviceCols = db.prepare("PRAGMA table_info('devices');").all() as unknown as { name: string }[];
+        const hasClaimCode = deviceCols.some((col) => col.name === 'claim_code');
+        if (!hasClaimCode) {
+          try {
+            db.exec('ALTER TABLE devices ADD COLUMN claim_code TEXT;');
+          } catch {
+            // Column may already exist
+          }
+        }
+      }
+    }
+
+    db.exec('PRAGMA user_version = 2;');
+  } catch (err) {
+    console.error('[Database Migration Warning]', err);
+  }
+}
+
 export function initDatabase(dbPath?: string): DatabaseSync {
   if (dbInstance) {
     return dbInstance;
@@ -85,6 +147,11 @@ export function initDatabase(dbPath?: string): DatabaseSync {
   // Run schema
   const schemaSql = loadSchemaSql();
   db.exec(schemaSql);
+
+  // Apply automatic migrations for existing databases on disk
+  if (targetPath !== ':memory:') {
+    migrateDatabase(db);
+  }
 
   dbInstance = db;
   return dbInstance;
