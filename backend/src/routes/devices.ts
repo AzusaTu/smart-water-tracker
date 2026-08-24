@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   bindDevice,
   listDevices,
+  rotateDeviceToken,
   unbindDevice,
   getDeviceStatus,
 } from '../controllers/deviceController';
@@ -13,6 +14,7 @@ router.use(authenticateUser);
 
 router.post('/', bindDevice);
 router.get('/', listDevices);
+router.post('/:id/token/rotate', rotateDeviceToken);
 router.delete('/:id', unbindDevice);
 router.get('/:id/status', getDeviceStatus);
 

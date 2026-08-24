@@ -791,12 +791,32 @@
               <div class="status-dot ${d.isOnline ? 'online' : ''}"></div>
               <div>
                 <div style="font-weight: 700; font-size: 0.9rem;">${d.name || d.id}</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted);">${d.id} • ${d.isOnline ? '🟢 連線中' : '⚪ 離線'}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">${d.id} • ${d.isOnline ? '🟢 連線中' : '⚪ 離線'} • 憑證: ${d.deviceToken || '****'}</div>
               </div>
             </div>
-            <button class="btn btn-danger btn-sm" onclick="unbindDevice('${d.id}')">解綁</button>
+            <div style="display: flex; gap: 0.4rem;">
+              <button class="btn btn-secondary btn-sm" onclick="rotateToken('${d.id}')" title="重新產生憑證">重產憑證</button>
+              <button class="btn btn-danger btn-sm" onclick="unbindDevice('${d.id}')">解綁</button>
+            </div>
           </div>
         `).join('');
+      }
+    }
+
+    async function rotateToken(id) {
+      if (!confirm(`確定要為裝置 ${id} 重新產生 Token 嗎？舊 Token 將立即失效！`)) return;
+      const res = await fetch(`${API_BASE}/devices/${id}/token/rotate`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        document.getElementById('tokenDisplay').classList.remove('hidden');
+        document.getElementById('tokenValue').innerText = data.deviceToken;
+        showToast('已重新產生 Device Token！');
+        loadDevices();
+      } else {
+        showToast(data.error || '重產失敗');
       }
     }
 

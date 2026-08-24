@@ -22,18 +22,19 @@ CREATE TABLE IF NOT EXISTS devices (
 -- Drink and Refill Records Table
 CREATE TABLE IF NOT EXISTS drink_records (
   id             TEXT PRIMARY KEY,
-  event_id       TEXT UNIQUE,            -- ESP32 event ID for idempotent deduplication
+  event_id       TEXT,                   -- ESP32 event ID (scoped unique per user)
   user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   device_id      TEXT REFERENCES devices(id) ON DELETE SET NULL,
   event_type     TEXT NOT NULL DEFAULT 'drink', -- 'drink' or 'refill'
   amount_ml      INTEGER NOT NULL,
   remaining_ml   INTEGER,
-  occurred_at    TEXT NOT NULL,          -- ISO 8601 or ISO string
-  synced_at      TEXT DEFAULT (datetime('now'))
+  occurred_at    TEXT NOT NULL,          -- ISO 8601 UTC string
+  synced_at      TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, event_id)
 );
 
--- Performance Indexes
+-- Performance & Security Indexes
 CREATE INDEX IF NOT EXISTS idx_records_user_date ON drink_records(user_id, occurred_at);
-CREATE INDEX IF NOT EXISTS idx_records_event_id ON drink_records(event_id);
+CREATE INDEX IF NOT EXISTS idx_records_user_event ON drink_records(user_id, event_id);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_token ON devices(device_token);

@@ -17,6 +17,11 @@ function isDeviceOnline(lastSeenAt: string | null): boolean {
   return now - lastSeenTime <= 5 * 60 * 1000;
 }
 
+function maskToken(token: string): string {
+  if (!token || token.length < 8) return '****';
+  return `${token.substring(0, 4)}****${token.substring(token.length - 4)}`;
+}
+
 export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   try {
     const userId = req.user?.id;
@@ -37,11 +42,11 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
         res.status(409).json({ error: 'Device is already bound to another user' });
         return;
       }
-      // If already bound to this user, refresh token or return existing
+      // If already bound to this user, return response with masked token
       const response: DeviceResponse = {
         id: existingDevice.id,
         name: existingDevice.name,
-        deviceToken: existingDevice.device_token,
+        deviceToken: maskToken(existingDevice.device_token),
         lastSeenAt: existingDevice.last_seen_at,
         isOnline: isDeviceOnline(existingDevice.last_seen_at),
         createdAt: existingDevice.created_at,
@@ -61,7 +66,7 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
     const response: DeviceResponse = {
       id: deviceId,
       name: name || null,
-      deviceToken,
+      deviceToken, // Full token returned ONLY on initial binding
       lastSeenAt: null,
       isOnline: false,
       createdAt: now,
@@ -69,7 +74,7 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
 
     res.status(201).json({
       device: response,
-      message: 'Device bound successfully. Save the deviceToken to configure your ESP32 device.',
+      message: 'Device bound successfully. Save the deviceToken now; it will not be shown again in full.',
     });
   } catch (err) {
     next(err);
@@ -89,16 +94,54 @@ export function listDevices(req: AuthenticatedRequest, res: Response, next: Next
       .prepare('SELECT * FROM devices WHERE user_id = ? ORDER BY created_at DESC')
       .all(userId) as unknown as Device[];
 
+    // Return masked tokens in list view to prevent credential leakage
     const response: DeviceResponse[] = devices.map((d) => ({
       id: d.id,
       name: d.name,
-      deviceToken: d.device_token,
+      deviceToken: maskToken(d.device_token),
       lastSeenAt: d.last_seen_at,
       isOnline: isDeviceOnline(d.last_seen_at),
       createdAt: d.created_at,
     }));
 
     res.status(200).json({ devices: response });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export function rotateDeviceToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  try {
+    const userId = req.user?.id;
+    const deviceId = req.params.id;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const db = getDatabase();
+    const device = db
+      .prepare('SELECT id FROM devices WHERE id = ? AND user_id = ?')
+      .get(deviceId, userId) as unknown as Pick<Device, 'id'> | undefined;
+
+    if (!device) {
+      res.status(404).json({ error: 'Device not found or not owned by you' });
+      return;
+    }
+
+    const newDeviceToken = `dvt_${crypto.randomBytes(24).toString('hex')}`;
+    db.prepare('UPDATE devices SET device_token = ? WHERE id = ? AND user_id = ?').run(
+      newDeviceToken,
+      deviceId,
+      userId
+    );
+
+    res.status(200).json({
+      deviceId,
+      deviceToken: newDeviceToken,
+      message: 'Device token rotated successfully. Update your ESP32 configuration with this new token.',
+    });
   } catch (err) {
     next(err);
   }

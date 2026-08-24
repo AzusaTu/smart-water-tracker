@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDatabase } from '../database/db';
 import {
   AuthenticatedRequest,
+  Device,
   DrinkRecord,
   DrinkRecordResponse,
   User,
@@ -34,6 +35,20 @@ export function getTaipeiDayStartIso(dateStr: string): string {
  */
 export function getTaipeiDayEndIso(dateStr: string): string {
   return new Date(`${dateStr}T23:59:59.999+08:00`).toISOString();
+}
+
+function formatRecordResponse(r: DrinkRecord): DrinkRecordResponse {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    userId: r.user_id,
+    deviceId: r.device_id,
+    eventType: r.event_type,
+    amountMl: r.amount_ml,
+    remainingMl: r.remaining_ml,
+    occurredAt: r.occurred_at,
+    syncedAt: r.synced_at,
+  };
 }
 
 const syncRecordSchema = z.object({
@@ -82,13 +97,22 @@ export function recordWaterEvent(
     const payload = syncRecordSchema.parse(req.body);
     const db = getDatabase();
 
-    // Determine device ID
-    let deviceId = req.device?.id || payload.deviceId || null;
-    if (!deviceId && payload.eventId && payload.eventId.startsWith('water_')) {
-      const parts = payload.eventId.split('-');
-      if (parts.length >= 1) {
-        deviceId = parts[0];
+    // Determine device ID with strict tenant ownership validation
+    let deviceId: string | null = null;
+    if (req.device) {
+      // Device token caller: deviceId is strictly bound to the authenticated device token
+      deviceId = req.device.id;
+    } else if (payload.deviceId) {
+      // User JWT caller: verify that the specified deviceId belongs to the authenticated user
+      const ownedDevice = db
+        .prepare('SELECT id FROM devices WHERE id = ? AND user_id = ?')
+        .get(payload.deviceId, userId) as unknown as Pick<Device, 'id'> | undefined;
+
+      if (!ownedDevice) {
+        res.status(403).json({ error: 'Device does not belong to current user' });
+        return;
       }
+      deviceId = ownedDevice.id;
     }
 
     // Determine event type
@@ -97,7 +121,6 @@ export function recordWaterEvent(
     // Parse occurredAt
     let occurredAtIso: string;
     if (payload.timeSynced === false || payload.occurredAt === 0 || !payload.occurredAt) {
-      // Fallback to server current time if device clock wasn't synced
       occurredAtIso = new Date().toISOString();
     } else if (typeof payload.occurredAt === 'number') {
       const parsedDate = new Date(payload.occurredAt * 1000);
@@ -117,28 +140,16 @@ export function recordWaterEvent(
 
     const syncedAtIso = new Date().toISOString();
 
-    // Idempotent deduplication check if eventId is provided
+    // Idempotent deduplication check (strictly scoped by user_id to prevent cross-account leaks)
     if (payload.eventId) {
       const existing = db
-        .prepare('SELECT * FROM drink_records WHERE event_id = ?')
-        .get(payload.eventId) as unknown as DrinkRecord | undefined;
+        .prepare('SELECT * FROM drink_records WHERE user_id = ? AND event_id = ?')
+        .get(userId, payload.eventId) as unknown as DrinkRecord | undefined;
 
       if (existing) {
-        const existingResponse: DrinkRecordResponse = {
-          id: existing.id,
-          eventId: existing.event_id,
-          userId: existing.user_id,
-          deviceId: existing.device_id,
-          eventType: existing.event_type,
-          amountMl: existing.amount_ml,
-          remainingMl: existing.remaining_ml,
-          occurredAt: existing.occurred_at,
-          syncedAt: existing.synced_at,
-        };
-
         res.status(200).json({
           message: 'Record already exists (idempotent)',
-          record: existingResponse,
+          record: formatRecordResponse(existing),
           duplicated: true,
         });
         return;
@@ -146,21 +157,42 @@ export function recordWaterEvent(
     }
 
     const recordId = uuidv4();
+    const remainingMl = payload.remainingMl !== undefined ? payload.remainingMl : null;
 
-    db.prepare(
-      `INSERT INTO drink_records (id, event_id, user_id, device_id, event_type, amount_ml, remaining_ml, occurred_at, synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      recordId,
-      payload.eventId || null,
-      userId,
-      deviceId,
-      eventType,
-      payload.amountMl,
-      payload.remainingMl !== undefined ? payload.remainingMl : null,
-      occurredAtIso,
-      syncedAtIso
-    );
+    // Atomic insert with race condition / concurrency protection
+    try {
+      db.prepare(
+        `INSERT INTO drink_records (id, event_id, user_id, device_id, event_type, amount_ml, remaining_ml, occurred_at, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        recordId,
+        payload.eventId || null,
+        userId,
+        deviceId,
+        eventType,
+        payload.amountMl,
+        remainingMl,
+        occurredAtIso,
+        syncedAtIso
+      );
+    } catch (insertErr: any) {
+      // If concurrent request with same eventId inserted first, return existing record gracefully (200 OK)
+      if (payload.eventId && insertErr?.message?.includes('UNIQUE constraint failed')) {
+        const existing = db
+          .prepare('SELECT * FROM drink_records WHERE user_id = ? AND event_id = ?')
+          .get(userId, payload.eventId) as unknown as DrinkRecord | undefined;
+
+        if (existing) {
+          res.status(200).json({
+            message: 'Record already exists (idempotent)',
+            record: formatRecordResponse(existing),
+            duplicated: true,
+          });
+          return;
+        }
+      }
+      throw insertErr;
+    }
 
     // Update device last_seen_at if deviceId is known and belongs to this user
     if (deviceId) {
@@ -178,7 +210,7 @@ export function recordWaterEvent(
       deviceId,
       eventType,
       amountMl: payload.amountMl,
-      remainingMl: payload.remainingMl !== undefined ? payload.remainingMl : null,
+      remainingMl,
       occurredAt: occurredAtIso,
       syncedAt: syncedAtIso,
     };
@@ -248,17 +280,7 @@ export function listRecords(
       )
       .all(...params, limit, offset) as unknown as DrinkRecord[];
 
-    const formattedRecords: DrinkRecordResponse[] = records.map((r) => ({
-      id: r.id,
-      eventId: r.event_id,
-      userId: r.user_id,
-      deviceId: r.device_id,
-      eventType: r.event_type,
-      amountMl: r.amount_ml,
-      remainingMl: r.remaining_ml,
-      occurredAt: r.occurred_at,
-      syncedAt: r.synced_at,
-    }));
+    const formattedRecords: DrinkRecordResponse[] = records.map(formatRecordResponse);
 
     res.status(200).json({
       records: formattedRecords,
