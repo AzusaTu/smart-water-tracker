@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="bg-slate-100 text-slate-900">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>研習證明書 | ESP32 智慧喝水偵測器工作坊</title>
+
+  <!-- Typography: Noto Serif TC, Playfair Display & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800;900&family=Noto+Serif+TC:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* A4 橫式列印標準尺寸 */
+    @page {
+      size: A4 landscape;
+      margin: 0;
+    }
+
+    @media print {
+      body {
+        background: transparent !important;
+        padding: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .certificate-container {
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+
+    .font-cinzel {
+      font-family: 'Cinzel', serif;
+    }
+
+    .font-serif-tc {
+      font-family: 'Noto Serif TC', serif;
+    }
+
+    .certificate-border {
+      border: 3px solid #0f172a;
+      outline: 1px solid #94a3b8;
+      outline-offset: -8px;
+    }
+
+    .inner-border {
+      border: 1px solid #cbd5e1;
+    }
+
+    /* 底紋浮水印 */
+    .watermark-bg {
+      background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+  </style>
+</head>
+<body class="min-h-screen py-8 flex flex-col items-center justify-center font-sans antialiased">
+
+  <!-- ================= 頂部操作控制列 (列印時自動隱藏) ================= -->
+  <div class="no-print w-full max-w-5xl mb-6 px-4 flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+        <i data-lucide="award" class="w-4 h-4 text-sky-400"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold text-slate-900">研習證明書產生與列印系統</h1>
+        <p class="text-xs text-slate-500 font-mono">ESP32 智慧喝水偵測器實體工作坊 (全日 6.5 小時深度實作)</p>
+      </div>
+    </div>
+
+    <!-- 編輯面板 -->
+    <div class="flex flex-wrap items-center gap-3 text-xs">
+      <div class="flex items-center gap-1.5">
+        <label class="font-bold text-slate-600">學員姓名：</label>
+        <input type="text" id="input-name" value="王小明" oninput="updateCert()" class="px-2.5 py-1.5 rounded-lg border border-slate-300 focus:border-sky-500 focus:outline-none w-28 font-serif-tc font-bold">
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <label class="font-bold text-slate-600">英文姓名：</label>
+        <input type="text" id="input-en-name" value="Alex Wang" oninput="updateCert()" class="px-2.5 py-1.5 rounded-lg border border-slate-300 focus:border-sky-500 focus:outline-none w-32 font-mono">
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <label class="font-bold text-slate-600">證書字號：</label>
+        <input type="text" id="input-serial" value="WT-2026-0824-001" oninput="updateCert()" class="px-2.5 py-1.5 rounded-lg border border-slate-300 focus:border-sky-500 focus:outline-none w-40 font-mono">
+      </div>
+
+      <button onclick="window.print()" class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition active:scale-95">
+        <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+        列印 / 匯出 PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= 實體研習證明書主體 (A4 橫式標準比例 297mm x 210mm) ================= -->
+  <div class="certificate-container relative w-[1050px] h-[742px] bg-white text-slate-900 certificate-border p-5 shadow-2xl flex flex-col justify-between overflow-hidden">
+    
+    <!-- 內框細線與角落花紋 -->
+    <div class="relative w-full h-full inner-border p-8 flex flex-col justify-between watermark-bg">
+      
+      <!-- 四角裝飾花紋 (Vector Corner Ornaments) -->
+      <div class="absolute top-2 left-2 w-6 h-6 border-t-2 border-l-2 border-slate-800"></div>
+      <div class="absolute top-2 right-2 w-6 h-6 border-t-2 border-r-2 border-slate-800"></div>
+      <div class="absolute bottom-2 left-2 w-6 h-6 border-b-2 border-l-2 border-slate-800"></div>
+      <div class="absolute bottom-2 right-2 w-6 h-6 border-b-2 border-r-2 border-slate-800"></div>
+
+      <!-- 證書頂部徽章與標題 -->
+      <div class="text-center space-y-2">
+        <div class="flex items-center justify-center gap-3">
+          <div class="h-[1px] w-20 bg-slate-300"></div>
+          <span class="text-[11px] font-cinzel font-bold tracking-[0.25em] text-slate-600 uppercase">Certificate of Completion</span>
+          <div class="h-[1px] w-20 bg-slate-300"></div>
+        </div>
+
+        <h1 class="text-4xl font-extrabold font-serif-tc text-slate-900 tracking-wider">
+          研 習 結 業 證 明 書
+        </h1>
+        
+        <p class="text-xs font-mono tracking-widest text-slate-500 uppercase">
+          Smart Water Tracker Workshop・ESP32-C3 × HX711 IoT Hands-on
+        </p>
+      </div>
+
+      <!-- 證書核心頒發正文 -->
+      <div class="text-center my-auto space-y-6 max-w-3xl mx-auto px-4">
+        
+        <!-- 受證人姓名 -->
+        <div class="space-y-1">
+          <div class="inline-block relative">
+            <span id="cert-name" class="text-3xl font-black font-serif-tc text-slate-950 px-8 pb-1 tracking-widest border-b-2 border-slate-800 block">
+              王小明
+            </span>
+            <span id="cert-en-name" class="text-xs font-cinzel font-semibold text-slate-500 block mt-1 tracking-wider">
+              Alex Wang
+            </span>
+          </div>
+        </div>
+
+        <!-- 研習證明條款 -->
+        <p class="text-sm font-serif-tc text-slate-700 leading-relaxed text-justify tracking-wide">
+          茲證明該學員已圓滿修畢「<strong>ESP32 智慧喝水偵測器實體手作工作坊</strong>」共計 <strong>6.5 小時</strong> 之專業實作課程，確實掌握 <strong>HX711 24-bit 稱重訊號調理、動態滑動濾波與 NVS 兩步校準演算法、有限狀態機 (FSM) 飲水判定、Web Bluetooth (BLE) 瀏覽器直連通訊</strong> 以及 <strong>Webhook 智慧聯網推播整合</strong> 等軟硬整合技術，表現優異，特頒此證以資證明。
+        </p>
+
+        <!-- 英文修業佐證 -->
+        <p class="text-[11px] font-sans text-slate-500 leading-relaxed italic max-w-2xl mx-auto">
+          This is to certify that the recipient has successfully completed the 6.5-hour intensive workshop on Smart Water Tracker, demonstrating proficiency in ESP32-C3 firmware, sensor signal conditioning, state machine design, and Web Bluetooth integration.
+        </p>
+
+      </div>
+
+      <!-- 證書底部資訊、印鑑與簽章欄 -->
+      <div class="pt-6 border-t border-slate-200 grid grid-cols-3 items-end">
+        
+        <!-- 左側：證書字號與發證日期 -->
+        <div class="space-y-1 text-left text-xs font-mono text-slate-600">
+          <div>證書字號：<span id="cert-serial" class="font-bold text-slate-900">WT-2026-0824-001</span></div>
+          <div>課程時數：<span class="font-bold text-slate-900">6.5 小時 (6.5 Contact Hours)</span></div>
+          <div>發證日期：<span id="cert-date" class="font-bold text-slate-900">中華民國 115 年 8 月 24 日</span></div>
+        </div>
+
+        <!-- 中間：官方防偽鋼印樣式 -->
+        <div class="flex flex-col items-center justify-center">
+          <div class="relative w-20 h-20 rounded-full border-2 border-dashed border-sky-600/80 bg-sky-50/50 flex flex-col items-center justify-center text-center p-1 select-none">
+            <i data-lucide="shield-check" class="w-6 h-6 text-sky-600 mb-0.5"></i>
+            <span class="text-[8px] font-cinzel font-bold text-sky-800 uppercase tracking-tighter">Verified Workshop</span>
+            <span class="text-[7px] font-mono text-sky-700">MAKER LAB 2026</span>
+          </div>
+        </div>
+
+        <!-- 右側：主講講師與主辦單位簽章欄 -->
+        <div class="flex justify-end gap-6 text-right">
+          <div class="space-y-2">
+            <div class="h-8 flex items-end justify-end">
+              <span class="font-serif-tc font-bold text-base text-slate-900 italic tracking-widest">Smart Water Team</span>
+            </div>
+            <div class="w-36 border-t border-slate-400 pt-1">
+              <span class="text-[11px] font-serif-tc text-slate-600 block">課程主講講師 / 主辦方</span>
+              <span class="text-[9px] font-cinzel text-slate-400 block uppercase">Lead Instructor</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= 動態同步邏輯 ================= -->
+  <script>
+    lucide.createIcons();
+
+    function updateCert() {
+      const name = document.getElementById('input-name').value || '王小明';
+      const enName = document.getElementById('input-en-name').value || 'Alex Wang';
+      const serial = document.getElementById('input-serial').value || 'WT-2026-0824-001';
+
+      document.getElementById('cert-name').textContent = name;
+      document.getElementById('cert-en-name').textContent = enName;
+      document.getElementById('cert-serial').textContent = serial;
+    }
+  </script>
+</body>
+</html>

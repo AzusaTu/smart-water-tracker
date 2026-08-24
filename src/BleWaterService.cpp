@@ -1,4 +1,5 @@
 #include "BleWaterService.h"
+#include <sys/time.h>
 #include <ArduinoJson.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -41,30 +42,24 @@ public:
             return;
         }
 
+        // 這裡是 BLE host task，不可直接碰 HX711 或 NVS，只排隊給主迴圈。
         const char* action = request["action"] | "";
         if (strcmp(action, "tare") == 0) {
-            Serial.println("[BLE] 收到去皮 (Tare) 命令，開始執行...");
-            _service.tare();
-            JsonDocument response;
-            response["success"] = true;
-            response["action"] = "tare";
-            response["currentWeight"] = _service._currentWeight;
-            String json;
-            serializeJson(response, json);
-            characteristic->setValue(json.c_str());
+            Serial.println("[BLE] 收到去皮 (Tare) 命令，排入主迴圈執行...");
+            _service._pendingCommand = BleWaterService::PENDING_TARE;
         } else if (strcmp(action, "reset_daily") == 0) {
-            Serial.println("[BLE] 收到重設今日喝水量命令，已重設為 0 ml");
-            if (_service._tracker != nullptr) {
-                _service._tracker->resetDailyTotal();
+            Serial.println("[BLE] 收到重設今日喝水量命令，排入主迴圈執行...");
+            _service._pendingCommand = BleWaterService::PENDING_RESET_DAILY;
+        } else if (strcmp(action, "set_time") == 0) {
+            // 本裝置沒有 WiFi/NTP，手機是唯一的時間來源。
+            const long long epoch = request["epoch"] | 0LL;
+            if (epoch < TIME_SYNCED_EPOCH_MIN) {
+                Serial.printf("[BLE] set_time 的 epoch 不合理 (%lld)，忽略\n", epoch);
+                return;
             }
-            _service._todayTotalMl = 0;
-            _service.updateSummary(0, _service._dailyGoalMl, _service._currentWeight, _service._isScaleStable);
-            JsonDocument response;
-            response["success"] = true;
-            response["action"] = "reset_daily";
-            String json;
-            serializeJson(response, json);
-            characteristic->setValue(json.c_str());
+            _service._pendingEpoch = static_cast<time_t>(epoch);
+            _service._pendingTzOffsetMinutes = request["tzOffsetMinutes"] | 0;
+            _service._pendingCommand = BleWaterService::PENDING_SET_TIME;
         }
     }
 
@@ -94,6 +89,18 @@ private:
     BleWaterService& _service;
 };
 
+class WaterServerCallbacks final : public BLEServerCallbacks {
+public:
+    void onConnect(BLEServer* pServer) override {
+        Serial.println("[BLE] 手機已連線");
+    }
+
+    void onDisconnect(BLEServer* pServer) override {
+        Serial.println("[BLE] 手機已中斷連線，重新啟動廣播 (Advertising)...");
+        BLEDevice::startAdvertising();
+    }
+};
+
 BleWaterService::BleWaterService(const String& deviceId) : _deviceId(deviceId) {}
 
 void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTracker* tracker) {
@@ -109,6 +116,7 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     BLEDevice::setMTU(517);
     _impl = new Impl();
     _impl->server = BLEDevice::createServer();
+    _impl->server->setCallbacks(new WaterServerCallbacks());
     BLEService* service = _impl->server->createService(BleProtocol::SERVICE_UUID);
 
     _impl->liveEvent = service->createCharacteristic(
@@ -134,7 +142,10 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     service->start();
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
     advertising->addServiceUUID(BleProtocol::SERVICE_UUID);
-    advertising->start();
+    advertising->setScanResponse(true);
+    advertising->setMinPreferred(0x06);
+    advertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
     Serial.printf("[BLE] 服務已啟動: %s (%s)\n", advertisedName.c_str(), _deviceId.c_str());
 }
 
@@ -150,6 +161,65 @@ void BleWaterService::tare() {
         _impl->summary->setValue(summaryJson().c_str());
     }
     Serial.printf("[BLE] 執行去皮完成，當前重量: %.1fg\n", _currentWeight);
+}
+
+bool BleWaterService::isClockSynced() {
+    return time(nullptr) > TIME_SYNCED_EPOCH_MIN;
+}
+
+void BleWaterService::applyDeviceTime(time_t epoch, int tzOffsetMinutes) {
+    struct timeval tv;
+    tv.tv_sec = epoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+
+    // POSIX 的 TZ 字串符號與日常寫法相反：UTC+8 要寫成 "UTC-8"
+    char tz[16];
+    snprintf(tz, sizeof(tz), "UTC%+d:%02d", -(tzOffsetMinutes / 60), abs(tzOffsetMinutes % 60));
+    setenv("TZ", tz, 1);
+    tzset();
+
+    struct tm timeinfo;
+    const time_t now = time(nullptr);
+    localtime_r(&now, &timeinfo);
+    Serial.printf("[BLE] 已由手機校時: %04d-%02d-%02d %02d:%02d:%02d (TZ=%s)\n",
+                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                  timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, tz);
+}
+
+void BleWaterService::processPendingCommands() {
+    const PendingCommand pending = _pendingCommand;
+    if (pending == PENDING_NONE) {
+        return;
+    }
+    _pendingCommand = PENDING_NONE;
+
+    // 回應內容與格式維持不變，只是改在實際執行完成後才寫回 command characteristic。
+    JsonDocument response;
+    response["success"] = true;
+    if (pending == PENDING_TARE) {
+        tare();
+        response["action"] = "tare";
+        response["currentWeight"] = _currentWeight;
+    } else if (pending == PENDING_SET_TIME) {
+        applyDeviceTime(_pendingEpoch, _pendingTzOffsetMinutes);
+        response["action"] = "set_time";
+        response["epoch"] = static_cast<long long>(time(nullptr));
+    } else {
+        Serial.println("[BLE] 執行重設今日喝水量，已重設為 0 ml");
+        if (_tracker != nullptr) {
+            _tracker->resetDailyTotal();
+        }
+        _todayTotalMl = 0;
+        updateSummary(0, _dailyGoalMl, _currentWeight, _isScaleStable);
+        response["action"] = "reset_daily";
+    }
+
+    if (_impl != nullptr && _impl->command != nullptr) {
+        String json;
+        serializeJson(response, json);
+        _impl->command->setValue(json.c_str());
+    }
 }
 
 void BleWaterService::updateSummary(int todayTotalMl, int dailyGoalMl, float currentWeight, bool isStable) {
@@ -168,8 +238,10 @@ void BleWaterService::recordDrink(time_t occurredAt, int amountMl, int remaining
         return;
     }
 
-    if (occurredAt <= 0) {
-        occurredAt = millis() / 1000;
+    // 未校時的 time() 只是開機秒數，送出去會被當成 1970 年。
+    // 明確標成 0 (未知)，並由 eventJson 的 timeSynced 告訴手機。
+    if (occurredAt < TIME_SYNCED_EPOCH_MIN) {
+        occurredAt = 0;
     }
     BleDrinkEvent event;
     event.occurredAt = occurredAt;
@@ -227,6 +299,7 @@ String BleWaterService::eventJson(const BleDrinkEvent& event) const {
     document["amountMl"] = event.amountMl;
     document["remainingMl"] = event.remainingMl;
     document["todayTotalMl"] = event.todayTotalMl;
+    document["timeSynced"] = event.occurredAt > 0;
 
     String json;
     serializeJson(document, json);
@@ -240,6 +313,7 @@ String BleWaterService::summaryJson() const {
     document["todayTotalMl"] = _todayTotalMl;
     document["currentWeight"] = _currentWeight;
     document["isStable"] = _isScaleStable;
+    document["timeSynced"] = isClockSynced();
     const String latestId = latestEventId();
     if (latestId.length() == 0) {
         document["latestEventId"] = nullptr;
@@ -265,6 +339,9 @@ void BleWaterService::replayAfter(const String& afterEventId) {
     if (_impl == nullptr || _impl->historySync == nullptr) {
         return;
     }
+    // The central enables notifications asynchronously. Wait for the CCCD
+    // subscription to settle before returning the first event/sync_complete.
+    delay(200);
     for (const BleDrinkEvent& event : eventsAfter(afterEventId)) {
         const String json = eventJson(event);
         _impl->historySync->setValue(json.c_str());

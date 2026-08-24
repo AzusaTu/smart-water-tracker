@@ -87,7 +87,9 @@ private:
 
     unsigned long _lastDrinkTimestamp;
     bool _reminderTriggered;
-    int _currentMDay;
+    // 今日累計所屬的日期 (YYYYMMDD)，0 代表尚未校時過。
+    // 用完整日期而非 tm_mday，才不會在相隔整月時撞號；存進 NVS 才能跨重開機判斷。
+    int _todayStamp;
 
     // 歷史紀錄環狀佇列
     static const int MAX_HISTORY = 30;

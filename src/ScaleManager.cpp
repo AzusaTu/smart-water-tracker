@@ -113,11 +113,14 @@ void ScaleManager::tare(uint8_t times) {
         _zeroOffset = _scale.get_offset();
         saveCalibration(_calibrationFactor, _zeroOffset);
         
-        // 重設濾波視窗
+        // 重設濾波視窗。_historyIndex 必須一併歸零：平均迴圈是從 index 0 掃到
+        // _historyCount，只清 count 會讓新讀數寫進舊 index，平均到的是去皮前的值。
+        _historyIndex = 0;
         _historyCount = 0;
         _currentWeight = 0.0f;
         _filteredWeight = 0.0f;
-        _isStable = true;
+        // 視窗尚未重新填滿前不能宣告穩定，否則 DrinkTracker 會拿假穩定值做狀態判斷
+        _isStable = false;
         Serial.printf("[ScaleManager] 已去皮. 零點 Offset: %ld\n", _zeroOffset);
     }
 }
@@ -146,8 +149,10 @@ bool ScaleManager::calibrateWithKnownWeight(float knownWeightGrams) {
     _scale.set_scale(_calibrationFactor);
     saveCalibration(_calibrationFactor, _zeroOffset);
 
-    // 重設濾波視窗
+    // 重設濾波視窗 (理由同 tare())
+    _historyIndex = 0;
     _historyCount = 0;
+    _isStable = false;
     Serial.printf("[ScaleManager] 校準成功! 新係數: %.2f (已知重量: %.1fg)\n", _calibrationFactor, knownWeightGrams);
     return true;
 }

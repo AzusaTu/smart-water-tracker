@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="scroll-smooth bg-[#f8fafc] text-slate-900 antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 智慧喝水偵測器工作坊 | 6.5小時全日從感測器原理到 Web BLE 直連</title>
+  <meta name="description" content="全日制 6.5 小時實體硬體工作坊。親手組裝 24-bit 高精度稱重感測器、編寫滑動濾波與狀態機演算法，透過 Web Bluetooth 打造免裝 App 的桌面極客水杯墊。費用 NT$ 2,500 含完整硬體套件。">
+
+  <!-- Typography: Plus Jakarta Sans / Noto Sans TC / JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS & Lucide Icons & Chart.js -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '"Noto Sans TC"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#075985',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    ::selection {
+      background-color: #0284c7;
+      color: #ffffff;
+    }
+
+    /* 淺色極簡工程格線 */
+    .grid-pattern-light {
+      background-size: 32px 32px;
+      background-image: 
+        linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+    }
+
+    /* 物理水杯動態波浪 (淺色版) */
+    .cup-viewport {
+      position: relative;
+      overflow: hidden;
+      border-radius: 0 0 28px 28px;
+      border: 2px solid #cbd5e1;
+      border-top: 2px dashed #94a3b8;
+      background: #f1f5f9;
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+
+    .water-body {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+      transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .water-body::before {
+      content: "";
+      position: absolute;
+      width: 260%;
+      height: 260%;
+      top: -250%;
+      left: -80%;
+      background-color: rgba(255, 255, 255, 0.3);
+      border-radius: 44%;
+      animation: waveRotate 9s infinite linear;
+    }
+
+    @keyframes waveRotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#f8fafc] text-slate-800 selection:bg-brand-500 font-sans">
+
+  <!-- ================= 導航列 (Navbar) ================= -->
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      
+      <a href="#" class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white shadow-sm">
+          <i data-lucide="cpu" class="w-4 h-4 text-sky-400"></i>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm text-slate-900 tracking-tight">Smart Water Tracker</span>
+            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200 font-semibold">WORKSHOP</span>
+          </div>
+          <span class="text-[11px] font-mono text-slate-500">ESP32-C3 × HX711 實體手作</span>
+        </div>
+      </a>
+
+      <div class="hidden md:flex items-center gap-7 text-xs font-semibold text-slate-600">
+        <a href="#overview" class="hover:text-slate-900 transition">專案概念</a>
+        <a href="#simulator" class="hover:text-slate-900 transition">演算法模擬器</a>
+        <a href="#hardware" class="hover:text-slate-900 transition">硬體套件拆解</a>
+        <a href="#curriculum" class="hover:text-slate-900 transition">課程大綱</a>
+        <a href="#faq" class="hover:text-slate-900 transition">常見問答</a>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="hidden sm:block text-xs font-mono text-slate-500">
+          全包費用 <strong class="text-slate-900 font-bold font-mono">NT$ 2,500</strong>
+        </span>
+        <button onclick="openModal()" class="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition shadow-sm">
+          預約席次
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ================= 主視覺 Hero (Light Edition) ================= -->
+  <header class="relative pt-28 pb-16 md:pt-36 md:pb-24 border-b border-slate-200 grid-pattern-light bg-gradient-to-b from-white via-slate-50 to-[#f8fafc]">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      
+      <!-- 頂部資訊標籤 -->
+      <div class="flex flex-wrap items-center gap-2 mb-6">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-700 text-xs font-mono shadow-sm">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          2026 實體工作坊
+        </span>
+        <span class="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 text-xs font-mono shadow-sm">
+          6.5小時深度實作 (09:30-17:00)
+        </span>
+        <span class="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 text-xs font-mono shadow-sm">
+          全套硬體帶回
+        </span>
+        <span class="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 text-xs font-mono shadow-sm">
+          每班限額 16 人
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+        
+        <!-- 左側主標與介紹 -->
+        <div class="lg:col-span-7 space-y-6">
+          <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-950 leading-tight">
+            從物理傳感器訊號到<br>
+            <span class="text-brand-600">Web Bluetooth 原生直連</span>
+          </h1>
+
+          <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+            親手組裝 24-bit 高精度稱重感測器，編寫滑動濾波與水杯狀態機演算法，透過 Web Bluetooth API 打造專屬於你的免裝 App 桌面智慧水杯墊。
+          </p>
+
+          <!-- 核心規格清單 (淺色清爽版) -->
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div class="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+              <span class="text-[11px] font-mono text-slate-400 block uppercase font-medium">Hardware Core</span>
+              <span class="text-xs font-bold text-slate-800 mt-0.5 block">ESP32-C3 RISC-V + HX711</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+              <span class="text-[11px] font-mono text-slate-400 block uppercase font-medium">Accuracy</span>
+              <span class="text-xs font-bold text-slate-800 mt-0.5 block">5KG 應變規 / 1g 微量解析</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+              <span class="text-[11px] font-mono text-slate-400 block uppercase font-medium">Connectivity</span>
+              <span class="text-xs font-bold text-slate-800 mt-0.5 block">Web BLE 5.0 (免裝App) + WiFi</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+              <span class="text-[11px] font-mono text-slate-400 block uppercase font-medium">Open Source</span>
+              <span class="text-xs font-bold text-slate-800 mt-0.5 block">PlatformIO C++ & Tailwind PWA</span>
+            </div>
+          </div>
+
+          <!-- 價格與 CTA -->
+          <div class="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <button onclick="openModal()" class="px-6 py-3 text-sm font-bold rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-brand-500/20">
+              <span>立即預約席次</span>
+              <span class="font-mono text-xs opacity-90">NT$ 2,500</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+            <a href="#curriculum" class="px-5 py-3 text-sm font-semibold rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-center transition shadow-sm">
+              檢視 6.5 小時課綱 (09:30-17:00)
+            </a>
+          </div>
+
+        </div>
+
+        <!-- 右側產品圖片與硬體規格卡 -->
+        <div class="lg:col-span-5">
+          <div class="rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-xl">
+            <div class="p-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between text-xs font-mono text-slate-500">
+              <span class="flex items-center gap-2 font-semibold">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                HARDWARE SPEC SHEET
+              </span>
+              <span>REV 1.0</span>
+            </div>
+
+            <div class="relative">
+              <img src="assets/hero_product.jpg" alt="智慧喝水偵測器成品照片" class="w-full h-64 object-cover">
+              <div class="absolute bottom-3 left-3 right-3 p-3 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md flex items-center justify-between text-xs">
+                <div>
+                  <span class="text-slate-900 font-bold block">5KG 圓形金屬稱重托盤</span>
+                  <span class="text-[11px] font-mono text-slate-500">適配馬克杯、保溫壺、隨手杯</span>
+                </div>
+                <span class="font-mono text-xs px-2.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">
+                  實體成品
+                </span>
+              </div>
+            </div>
+
+            <div class="p-4 space-y-2 text-xs font-mono text-slate-600 bg-slate-50 border-t border-slate-100">
+              <div class="flex justify-between">
+                <span>MCU Controller</span>
+                <span class="text-slate-900 font-medium">ESP32-C3 SuperMini</span>
+              </div>
+              <div class="flex justify-between">
+                <span>ADC Sampling</span>
+                <span class="text-slate-900 font-medium">HX711 (24-Bit Σ-Δ, 128x Gain)</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Flash Storage</span>
+                <span class="text-slate-900 font-medium">NVS Non-Volatile Memory</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ================= 專案概念：為什麼自製水杯墊？ ================= -->
+  <section id="overview" class="py-16 border-b border-slate-200 bg-white">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      
+      <div class="max-w-2xl mb-12">
+        <span class="text-xs font-mono uppercase tracking-wider text-brand-600 font-semibold">Project Background</span>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 mt-1">
+          解決生活真實痛點的 Maker 實作
+        </h2>
+        <p class="text-slate-600 text-sm mt-2 leading-relaxed">
+          工作專注時經常一坐就是數小時滴水未進。市售智慧水杯動輒數千元且限定特定杯體；本專案採用開源架構，將任何杯子都升級為智慧監測裝置。
+        </p>
+      </div>
+
+      <!-- 對比卡片 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+            <h3 class="text-base font-bold text-slate-700">市售商業智慧水杯</h3>
+            <span class="text-xs font-mono text-red-600 font-semibold">約 NT$ 3,000 ~ 4,500</span>
+          </div>
+          <ul class="space-y-3 text-xs sm:text-sm text-slate-600">
+            <li class="flex items-start gap-2.5">
+              <span class="text-slate-400 font-mono font-bold">✕</span>
+              <span><strong>限定單一水杯：</strong> 無法使用自己慣用的保溫杯、馬克杯或外帶飲料。</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <span class="text-slate-400 font-mono font-bold">✕</span>
+              <span><strong>軟體封閉：</strong> 需下載專用 App，廠商終止雲端服務後硬體即失效。</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <span class="text-slate-400 font-mono font-bold">✕</span>
+              <span><strong>無法外部連動：</strong> 無法整合 Home Assistant、Discord 或個人化自動化流程。</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="p-6 rounded-2xl bg-white border-2 border-brand-500 shadow-sm relative">
+          <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+            <h3 class="text-base font-bold text-slate-950 flex items-center gap-2">
+              本工作坊自製方案
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">RECOMMENDED</span>
+            </h3>
+            <span class="text-xs font-mono text-brand-600 font-bold">NT$ 2,500 (含全套材料)</span>
+          </div>
+          <ul class="space-y-3 text-xs sm:text-sm text-slate-700">
+            <li class="flex items-start gap-2.5">
+              <span class="text-brand-600 font-mono font-bold">✓</span>
+              <span><strong>任何容器通用：</strong> 5KG 圓形金屬稱重托盤，馬克杯、保溫壺、隨手杯皆可放置。</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <span class="text-brand-600 font-mono font-bold">✓</span>
+              <span><strong>Web BLE 免裝 App：</strong> 瀏覽器直連藍牙通訊，無伺服器依賴，低溫低功耗。</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <span class="text-brand-600 font-mono font-bold">✓</span>
+              <span><strong>完整代碼掌握：</strong> 帶回 100% 開源 PlatformIO 韌體與 Web 原始碼，隨心擴充。</span>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= 演算法與水杯模擬器 (Interactive Test Bench - Light) ================= -->
+  <section id="simulator" class="py-16 border-b border-slate-200 bg-[#f8fafc]">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      
+      <div class="max-w-2xl mb-10">
+        <span class="text-xs font-mono uppercase tracking-wider text-brand-600 font-semibold">Interactive Lab Simulator</span>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 mt-1">
+          感測器與狀態機邏輯在線測試
+        </h2>
+        <p class="text-slate-600 text-sm mt-2 leading-relaxed">
+          工作坊核心之一為編寫韌體狀態機（拿起水杯 → 飲用 → 放回計算差值）。在下方控制台可直接模擬硬體事件並觀察即時數據流。
+        </p>
+      </div>
+
+      <div class="rounded-2xl bg-white border border-slate-200 p-6 lg:p-8 shadow-sm">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          
+          <!-- 水杯視覺化 -->
+          <div class="lg:col-span-4 flex flex-col items-center justify-center p-5 bg-slate-50 rounded-2xl border border-slate-200">
+            <div class="relative w-36 h-52 cup-viewport flex flex-col justify-end items-center pb-3">
+              <div id="sim-water" class="water-body" style="height: 65%;"></div>
+              <div class="relative z-10 text-center select-none">
+                <span id="sim-current-vol" class="text-2xl font-black text-slate-900 font-mono">325</span>
+                <span class="text-[11px] text-slate-800 font-mono font-semibold block">ml / 當前水量</span>
+                <span id="sim-cup-weight" class="text-[10px] text-slate-600 font-mono block mt-0.5">總重: 525.0g</span>
+              </div>
+            </div>
+
+            <div class="mt-4 flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs font-mono shadow-sm">
+              <span id="sim-led" class="w-2.5 h-2.5 rounded-full bg-brand-500"></span>
+              <span id="sim-status-text" class="text-slate-700 font-medium">STATE: IDLE (STABLE)</span>
+            </div>
+          </div>
+
+          <!-- 右側數據與控制 -->
+          <div class="lg:col-span-8 space-y-4">
+            
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span class="text-[11px] font-mono text-slate-500 block">今日累計喝水量</span>
+                <div class="flex items-baseline gap-1 mt-1">
+                  <span id="sim-today-drink" class="text-xl font-black text-brand-600 font-mono">1150</span>
+                  <span class="text-xs text-slate-500 font-mono">/ 2000 ml</span>
+                </div>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span class="text-[11px] font-mono text-slate-500 block">上次飲水時間</span>
+                <div class="flex items-baseline gap-1 mt-1">
+                  <span id="sim-last-drink-time" class="text-xl font-black text-emerald-600 font-mono">12</span>
+                  <span class="text-xs text-slate-500 font-mono">分鐘前</span>
+                </div>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 col-span-2 sm:col-span-1">
+                <span class="text-[11px] font-mono text-slate-500 block">去皮基準值 (Tare)</span>
+                <span class="text-xl font-black text-slate-700 font-mono mt-1 block">200.0g</span>
+              </div>
+            </div>
+
+            <!-- 控制按鈕 -->
+            <div>
+              <span class="text-xs font-mono text-slate-600 font-semibold block mb-2">硬體事件觸發模擬：</span>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <button onclick="simDrink(50)" class="px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 transition active:scale-95 text-left flex items-center justify-between shadow-sm">
+                  <span>喝水 50ml</span>
+                  <span class="font-mono text-[10px] text-brand-600">-50g</span>
+                </button>
+                <button onclick="simDrink(150)" class="px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 transition active:scale-95 text-left flex items-center justify-between shadow-sm">
+                  <span>喝水 150ml</span>
+                  <span class="font-mono text-[10px] text-brand-600">-150g</span>
+                </button>
+                <button onclick="simRefill(300)" class="px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-emerald-700 transition active:scale-95 text-left flex items-center justify-between shadow-sm">
+                  <span>倒入 300ml</span>
+                  <span class="font-mono text-[10px] text-emerald-600">+300g</span>
+                </button>
+                <button onclick="simLiftCup()" class="px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 transition active:scale-95 text-left shadow-sm">
+                  <span>拿起水杯</span>
+                </button>
+                <button onclick="simPutBack()" class="px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 transition active:scale-95 text-left shadow-sm">
+                  <span>放回水杯</span>
+                </button>
+                <button onclick="simReset()" class="px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-500 transition active:scale-95 text-left shadow-sm">
+                  <span>重置狀態</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 即時圖表 -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <div class="flex justify-between items-center mb-1 text-[11px] font-mono text-slate-500 font-semibold">
+                <span>HOURLY INTAKE LOG (ml)</span>
+                <span>CHART.JS LIVE SYNC</span>
+              </div>
+              <div class="h-24 w-full">
+                <canvas id="chart-hourly"></canvas>
+              </div>
+            </div>
+
+            <!-- 序列埠終端機日誌 -->
+            <div class="p-3 rounded-xl bg-slate-900 font-mono text-[11px] text-slate-300 h-20 overflow-y-auto space-y-0.5 select-text shadow-inner" id="sim-log">
+              <div class="text-slate-400">[SYS_INIT] ESP32-C3 SuperMini ready. BLE GATT advertising...</div>
+              <div class="text-sky-400">[HX711] Calibrated. ZeroOffset: -12844, ScaleFactor: 420.0</div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= 硬體材料包拆解 (Hardware Breakdown) ================= -->
+  <section id="hardware" class="py-16 border-b border-slate-200 bg-white">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      
+      <div class="max-w-2xl mb-12">
+        <span class="text-xs font-mono uppercase tracking-wider text-brand-600 font-semibold">Kit Teardown</span>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 mt-1">
+          NT$ 2,500 包含的實體硬體材料包
+        </h2>
+        <p class="text-slate-600 text-sm mt-2 leading-relaxed">
+          現場發放全套模組化硬體材料包。免焊接設計，課堂中完成組裝與韌體燒錄，課後整套完整帶回日常使用。
+        </p>
+      </div>
+
+      <!-- 材料包照片 -->
+      <div class="rounded-2xl overflow-hidden bg-slate-50 border border-slate-200 mb-8 shadow-sm">
+        <div class="p-3.5 border-b border-slate-200 bg-white flex items-center justify-between text-xs font-mono text-slate-600">
+          <span class="font-semibold">HARDWARE TEARDOWN & ACCESSORIES</span>
+          <span class="font-bold text-brand-600">VALUED OVER NT$ 1,200</span>
+        </div>
+        <img src="assets/kit_flatlay.jpg" alt="硬體材料包開箱實拍" class="w-full h-64 sm:h-80 object-cover">
+      </div>
+
+      <!-- 材料規格列表 -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono text-brand-600 font-bold">PART 01</span>
+            <span class="text-[10px] font-mono text-slate-400">MCU</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">ESP32-C3 SuperMini 開發板</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            32-bit RISC-V 單核心微控制器，原生支援低功耗藍牙 (BLE 5.0) 與 2.4GHz WiFi。
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono text-brand-600 font-bold">PART 02</span>
+            <span class="text-[10px] font-mono text-slate-400">ADC SENSOR</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">HX711 24-Bit 稱重放大模組</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            高靈敏雙通道類比數位轉換晶片，具備 128 倍可程式增益放大，可捕捉 1g 微小重量變化。
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono text-brand-600 font-bold">PART 03</span>
+            <span class="text-[10px] font-mono text-slate-400">LOAD CELL</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">50N (5KG) 圓形金屬傳感器托盤</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            4 線全橋式金屬應變規傳感器，搭配霧面平穩托盤與防滑避震腳墊，穩固耐用。
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono text-brand-600 font-bold">PART 04</span>
+            <span class="text-[10px] font-mono text-slate-400">WIRING & POWER</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">Type-C 編織傳輸線與杜邦線組</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            含 1 米高品質數據傳輸線、防呆顏色對應杜邦跳線與專屬固定螺絲組。
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono text-brand-600 font-bold">PART 05</span>
+            <span class="text-[10px] font-mono text-slate-400">FIRMWARE & PWA</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">完整開源韌體與 Web 儀表板</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            包含 PlatformIO C++ 原始碼、狀態機演算法、兩步 NVS 校準與 Tailwind 前端儀表板。
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono text-brand-600 font-bold">PART 06</span>
+            <span class="text-[10px] font-mono text-slate-400">SUPPORT</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">紙本實戰講義與專屬學員群</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            提供全彩步驟圖解指引手冊，課後享有線上社群問答與韌體升級支援。
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= 5 小時精實課程大綱 (Curriculum - Light) ================= -->
+  <section id="curriculum" class="py-16 border-b border-slate-200 bg-[#f8fafc]">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      
+      <div class="max-w-2xl mb-12">
+        <span class="text-xs font-mono uppercase tracking-wider text-brand-600 font-semibold">Curriculum Schedule</span>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 mt-1">
+          全日 6.5 小時深度實作課綱 (09:30 - 17:00)
+        </h2>
+        <p class="text-slate-600 text-sm mt-2 leading-relaxed">
+          全天 09:30 至 17:00（含 1 小時午餐休息，純實作 6.5 小時）。從傳感器底層訊號處理到前端現代 Web BLE 通訊，每階段均有實作任務與講師助教驗收。
+        </p>
+      </div>
+
+      <div class="space-y-4">
+        
+        <!-- LAB 01 -->
+        <div class="p-5 rounded-xl bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">09:30 - 10:30</span>
+              <span class="text-xs font-mono text-slate-400 font-semibold uppercase">LAB 01</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900">IoT 稱重物理原理與無焊電路組裝</h3>
+            <p class="text-xs text-slate-600">
+              惠斯登電橋原理、HX711 24-bit ADC 訊號採集、ESP32-C3 腳位規劃與防呆連接。
+            </p>
+          </div>
+          <span class="text-xs font-mono text-slate-500 shrink-0 font-medium">硬體組裝篇</span>
+        </div>
+
+        <!-- LAB 02 -->
+        <div class="p-5 rounded-xl bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">10:30 - 12:00</span>
+              <span class="text-xs font-mono text-slate-400 font-semibold uppercase">LAB 02</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900">訊號動態濾波與 Flash 兩步校準精靈</h3>
+            <p class="text-xs text-slate-600">
+              滑動平均濾波去噪、Tare 一鍵歸零、已知重量校準與 ESP32 NVS 斷電記憶儲存。
+            </p>
+          </div>
+          <span class="text-xs font-mono text-slate-500 shrink-0 font-medium">韌體演算法篇</span>
+        </div>
+
+        <!-- 中場 -->
+        <div class="py-2.5 px-4 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-between text-xs font-mono text-slate-500">
+          <span>12:00 - 13:00 午間餐敘與茶點交流</span>
+          <span class="font-semibold">LUNCH BREAK</span>
+        </div>
+
+        <!-- LAB 03 -->
+        <div class="p-5 rounded-xl bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">13:00 - 14:15</span>
+              <span class="text-xs font-mono text-slate-400 font-semibold uppercase">LAB 03</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900">水杯智慧狀態機實作 (喝水 vs. 加水 辨識)</h3>
+            <p class="text-xs text-slate-600">
+              有限狀態機 (FSM) 防抖邏輯、重量變化差值計算、空秤防呆與板載 LED 雙閃回饋。
+            </p>
+          </div>
+          <span class="text-xs font-mono text-slate-500 shrink-0 font-medium">核心狀態機篇</span>
+        </div>
+
+        <!-- LAB 04 -->
+        <div class="p-5 rounded-xl bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">14:15 - 15:45</span>
+              <span class="text-xs font-mono text-slate-400 font-semibold uppercase">LAB 04</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900">Web Bluetooth (BLE) 實作與 PWA 儀表板</h3>
+            <p class="text-xs text-slate-600">
+              免裝 App！瀏覽器 Web Bluetooth API 藍牙直連、自訂 GATT Profile 與水波圖表渲染。
+            </p>
+          </div>
+          <span class="text-xs font-mono text-slate-500 shrink-0 font-medium">Web 藍牙通訊篇</span>
+        </div>
+
+        <!-- LAB 05 -->
+        <div class="p-5 rounded-xl bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 font-bold">15:45 - 17:00</span>
+              <span class="text-xs font-mono text-slate-400 font-semibold uppercase">LAB 05</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900">Webhook 智慧聯網推播、除錯驗收與展示</h3>
+            <p class="text-xs text-slate-600">
+              串接 Discord / Home Assistant Webhook 久坐提醒，一對一除錯調校，作品驗收。
+            </p>
+          </div>
+          <span class="text-xs font-mono text-slate-500 shrink-0 font-medium">整合驗收篇</span>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= 常見問答 (FAQ - Light) ================= -->
+  <section id="faq" class="py-16 border-b border-slate-200 bg-white">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6">
+      
+      <div class="max-w-2xl mb-12">
+        <span class="text-xs font-mono uppercase tracking-wider text-brand-600 font-semibold">FAQ</span>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 mt-1">
+          常見問題解答
+        </h2>
+      </div>
+
+      <div class="space-y-3">
+        
+        <details class="p-4 rounded-xl bg-slate-50 border border-slate-200 group" open>
+          <summary class="flex justify-between items-center text-sm font-bold text-slate-900 cursor-pointer list-none select-none">
+            <span>我沒有任何硬體經驗或不會焊接，可以報名嗎？</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p class="text-xs text-slate-600 mt-3 leading-relaxed">
+            可以。本工作坊所有硬體模組均已預焊排針並附防呆插拔杜邦線，<strong>全程無需使用烙鐵</strong>。現場提供詳細講義並由講師步步指導。
+          </p>
+        </details>
+
+        <details class="p-4 rounded-xl bg-slate-50 border border-slate-200 group">
+          <summary class="flex justify-between items-center text-sm font-bold text-slate-900 cursor-pointer list-none select-none">
+            <span>參加當天需要自備什麼？</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <div class="text-xs text-slate-600 mt-3 space-y-1.5 leading-relaxed">
+            <p>請自備：</p>
+            <ul class="list-disc list-inside space-y-1">
+              <li>筆記型電腦（Windows / macOS / Linux 皆可，請預裝 Google Chrome 瀏覽器）。</li>
+              <li>平時常用的水杯或隨身瓶（現場校準杯重）。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="p-4 rounded-xl bg-slate-50 border border-slate-200 group">
+          <summary class="flex justify-between items-center text-sm font-bold text-slate-900 cursor-pointer list-none select-none">
+            <span>NT$ 2,500 費用是否已包含所有硬體零件？</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p class="text-xs text-slate-600 mt-3 leading-relaxed">
+            是的。費用 NT$ 2,500 為一票全包制，包含 ESP32-C3 開發板、HX711 模組、5KG 稱重傳感器托盤、線材、專屬講義與茶點。完成後的硬體作品可直接帶回家正常使用。
+          </p>
+        </details>
+
+        <details class="p-4 rounded-xl bg-slate-50 border border-slate-200 group">
+          <summary class="flex justify-between items-center text-sm font-bold text-slate-900 cursor-pointer list-none select-none">
+            <span>手機是否支援 Web Bluetooth 直連？</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p class="text-xs text-slate-600 mt-3 leading-relaxed">
+            Android 系統使用 Chrome 瀏覽器可原生支援 Web Bluetooth；iOS 裝置可透過免費的 Bluefy 瀏覽器或切換為內建 WiFi AP / mDNS 配網模式（Safari 輸入 <code>http://water.local</code>）使用。
+          </p>
+        </details>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= 底部 CTA ================= -->
+  <footer class="py-16 bg-[#f8fafc]">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6">
+      
+      <span class="text-xs font-mono text-brand-600 font-bold uppercase tracking-wider">LIMITED CAPACITY</span>
+      <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950">
+        打造屬於你的桌面智慧喝水偵測器
+      </h2>
+      <p class="text-slate-600 text-xs sm:text-sm max-w-lg mx-auto">
+        全日 6.5 小時深度實作，掌握微控制器、物理稱重訊號處理與現代物聯網技術。
+      </p>
+
+      <div class="pt-2">
+        <button onclick="openModal()" class="px-8 py-3.5 text-sm font-bold rounded-xl bg-brand-600 hover:bg-brand-700 text-white transition active:scale-95 shadow-md shadow-brand-500/20">
+          預約工作坊席次 (NT$ 2,500)
+        </button>
+      </div>
+
+      <div class="pt-10 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-slate-500 gap-4">
+        <span>© 2026 Smart Water Tracker Workshop</span>
+        <div class="flex gap-4">
+          <a href="#" class="hover:text-slate-800">MIT License</a>
+          <a href="#" class="hover:text-slate-800">退費政策</a>
+          <a href="#" class="hover:text-slate-800">聯絡主辦方</a>
+        </div>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ================= 報名彈窗 (Modal - Light) ================= -->
+  <div id="modal-reg" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+    <div class="relative w-full max-w-md bg-white rounded-2xl p-6 border border-slate-200 shadow-2xl space-y-5">
+      
+      <button onclick="closeModal()" class="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-800 rounded-lg bg-slate-100 border border-slate-200">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <div>
+        <span class="text-[11px] font-mono text-brand-600 font-bold uppercase">REGISTRATION</span>
+        <h3 class="text-lg font-bold text-slate-900 mt-0.5">預約工作坊席次</h3>
+        <p class="text-xs text-slate-500">填寫基本資料後將保留席次，並發送行前指引至您的 Email。</p>
+      </div>
+
+      <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs">
+        <div>
+          <span class="text-slate-500 block">課程方案</span>
+          <span class="text-slate-900 font-bold">實體工作坊 + 完整硬體套件</span>
+        </div>
+        <span class="text-sm font-mono font-black text-brand-600">NT$ 2,500</span>
+      </div>
+
+      <form id="reg-form" onsubmit="handleForm(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">學員姓名 *</label>
+          <input type="text" required placeholder="王小明" class="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-700 font-bold mb-1">電子信箱 *</label>
+            <input type="email" required placeholder="name@email.com" class="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-slate-700 font-bold mb-1">聯絡電話 *</label>
+            <input type="tel" required placeholder="0912345678" class="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">自備筆電作業系統</label>
+          <select class="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none">
+            <option value="mac">macOS (Apple Silicon / Intel)</option>
+            <option value="win">Windows 10 / 11</option>
+            <option value="linux">Linux</option>
+          </select>
+        </div>
+
+        <button type="submit" id="btn-submit-reg" class="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 font-bold text-white transition active:scale-95 mt-2 shadow-sm">
+          確認送出並保留席次 (NT$ 2,500)
+        </button>
+      </form>
+
+      <div id="reg-success" class="hidden text-center py-4 space-y-3">
+        <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+          <i data-lucide="check" class="w-5 h-5"></i>
+        </div>
+        <h4 class="text-base font-bold text-slate-900">預約已完成</h4>
+        <p class="text-xs text-slate-600">確認信件已發送至您的信箱，期待在工作坊與你見面！</p>
+        <button onclick="closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">
+          關閉視窗
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= 腳本與模擬器邏輯 ================= -->
+  <script>
+    lucide.createIcons();
+
+    let simState = {
+      tareWeight: 200,
+      waterMl: 325,
+      todayTotalMl: 1150,
+      dailyGoal: 2000,
+      isLifted: false,
+      lastDrinkMinutes: 12
+    };
+
+    // Chart.js 淺色主題配置
+    let hourlyData = [150, 200, 300, 200, 150, 150, 0];
+    const hourlyLabels = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '現在'];
+
+    const ctx = document.getElementById('chart-hourly').getContext('2d');
+    const hourlyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: hourlyLabels,
+        datasets: [{
+          data: hourlyData,
+          backgroundColor: '#0284c7',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            borderColor: '#e2e8f0',
+            borderWidth: 1,
+            titleFont: { family: 'JetBrains Mono' },
+            bodyFont: { family: 'JetBrains Mono' }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#e2e8f0' },
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }
+          }
+        }
+      }
+    });
+
+    function updateSimUI() {
+      const currentVolEl = document.getElementById('sim-current-vol');
+      const cupWeightEl = document.getElementById('sim-cup-weight');
+      const waterFillEl = document.getElementById('sim-water');
+      const ledEl = document.getElementById('sim-led');
+      const statusTextEl = document.getElementById('sim-status-text');
+      const todayDrinkEl = document.getElementById('sim-today-drink');
+      const lastDrinkTimeEl = document.getElementById('sim-last-drink-time');
+
+      if (simState.isLifted) {
+        currentVolEl.textContent = '--';
+        cupWeightEl.textContent = 'RAW: 0.0g (CUP LIFTED)';
+        ledEl.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse';
+        statusTextEl.textContent = 'STATE: CUP_LIFTED';
+      } else {
+        const totalWeight = simState.tareWeight + simState.waterMl;
+        currentVolEl.textContent = Math.round(simState.waterMl);
+        cupWeightEl.textContent = `總重: ${totalWeight.toFixed(1)}g (TARE: ${simState.tareWeight}g)`;
+        
+        const percent = Math.min(100, Math.max(0, (simState.waterMl / 500) * 100));
+        waterFillEl.style.height = `${percent}%`;
+
+        ledEl.className = 'w-2.5 h-2.5 rounded-full bg-brand-500';
+        statusTextEl.textContent = 'STATE: IDLE (STABLE)';
+      }
+
+      todayDrinkEl.textContent = simState.todayTotalMl;
+      lastDrinkTimeEl.textContent = simState.lastDrinkMinutes;
+
+      hourlyData[6] = Math.max(0, simState.todayTotalMl - 1000);
+      hourlyChart.update();
+    }
+
+    function addLog(text, color = 'text-slate-300') {
+      const logBox = document.getElementById('sim-log');
+      const item = document.createElement('div');
+      item.className = color;
+      const time = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+      item.textContent = `[${time}] ${text}`;
+      logBox.appendChild(item);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function simDrink(amount) {
+      if (simState.isLifted || simState.waterMl <= 0) return;
+      const drinkActual = Math.min(simState.waterMl, amount);
+      
+      addLog(`CUP_LIFTED: Event captured.`, 'text-sky-400');
+      simState.isLifted = true;
+      updateSimUI();
+
+      setTimeout(() => {
+        simState.waterMl -= drinkActual;
+        simState.todayTotalMl += drinkActual;
+        simState.isLifted = false;
+        simState.lastDrinkMinutes = 0;
+        addLog(`DRINK_DETECTED: Delta -${drinkActual}ml, Total: ${simState.todayTotalMl}ml`, 'text-emerald-400');
+        updateSimUI();
+      }, 600);
+    }
+
+    function simRefill(amount) {
+      if (simState.isLifted) return;
+      const before = simState.waterMl;
+      simState.waterMl = Math.min(500, simState.waterMl + amount);
+      addLog(`REFILL_DETECTED: Delta +${simState.waterMl - before}ml`, 'text-sky-400');
+      updateSimUI();
+    }
+
+    function simLiftCup() {
+      if (simState.isLifted) return;
+      simState.isLifted = true;
+      addLog(`EVENT: Weight < 25g threshold. Cup removed.`, 'text-amber-400');
+      updateSimUI();
+    }
+
+    function simPutBack() {
+      if (!simState.isLifted) return;
+      simState.isLifted = false;
+      addLog(`EVENT: Weight stabilized. Cup placed.`, 'text-slate-400');
+      updateSimUI();
+    }
+
+    function simReset() {
+      simState = {
+        tareWeight: 200,
+        waterMl: 325,
+        todayTotalMl: 1150,
+        dailyGoal: 2000,
+        isLifted: false,
+        lastDrinkMinutes: 12
+      };
+      addLog(`SYS: Reset to factory defaults.`, 'text-slate-400');
+      updateSimUI();
+    }
+
+    function openModal() {
+      const modal = document.getElementById('modal-reg');
+      modal.classList.remove('hidden');
+      setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('modal-reg');
+      modal.classList.add('opacity-0');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        document.getElementById('reg-form').classList.remove('hidden');
+        document.getElementById('reg-success').classList.add('hidden');
+      }, 200);
+    }
+
+    function handleForm(e) {
+      e.preventDefault();
+      document.getElementById('reg-form').classList.add('hidden');
+      document.getElementById('reg-success').classList.remove('hidden');
+    }
+
+    updateSimUI();
+  </script>
+</body>
+</html>

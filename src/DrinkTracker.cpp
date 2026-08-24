@@ -1,5 +1,12 @@
 #include "DrinkTracker.h"
 
+// 把 epoch 換算成當地日期代碼 YYYYMMDD
+static int dayStampFrom(time_t sec) {
+    struct tm timeinfo;
+    localtime_r(&sec, &timeinfo);
+    return (timeinfo.tm_year + 1900) * 10000 + (timeinfo.tm_mon + 1) * 100 + timeinfo.tm_mday;
+}
+
 DrinkTracker::DrinkTracker(ScaleManager& scale)
     : _scale(scale),
       _state(TRACKER_UNKNOWN),
@@ -13,7 +20,7 @@ DrinkTracker::DrinkTracker(ScaleManager& scale)
       _emptyCupThreshold(EMPTY_CUP_THRESHOLD_G),
       _lastDrinkTimestamp(0),
       _reminderTriggered(false),
-      _currentMDay(-1),
+      _todayStamp(0),
       _historyCount(0),
       _historyHead(0),
       _onEventCallback(nullptr),
@@ -23,20 +30,20 @@ DrinkTracker::DrinkTracker(ScaleManager& scale)
 void DrinkTracker::begin() {
     loadSettings();
     _lastDrinkTimestamp = millis();
-    _baselineWeight = _scale.getFilteredWeight();
 
-    if (_baselineWeight >= _emptyCupThreshold) {
-        _state = TRACKER_IDLE;
-    } else {
-        _state = TRACKER_DRINKING;
-    }
+    // 此刻 ScaleManager 還沒跑過任何一次 update()，讀出來必定是 0。
+    // 若拿它當基準重，秤上原本就放著的杯子會在第一次穩定時被結算成一次補水。
+    // 改由 TRACKER_UNKNOWN 等到第一筆穩定讀數再建立基準重與初始狀態。
+    _baselineWeight = 0.0f;
+    _state = TRACKER_UNKNOWN;
     _stateEntryTime = millis();
-    Serial.printf("[DrinkTracker] 追蹤器啟動. 初始狀態: %s (基準重: %.1fg, 目標: %dml)\n", 
-                  getStateString(), _baselineWeight, _dailyGoalMl);
+    Serial.printf("[DrinkTracker] 追蹤器啟動. 等待第一筆穩定讀數以建立基準重 (目標: %dml)\n",
+                  _dailyGoalMl);
 }
 
 const char* DrinkTracker::getStateString() const {
     switch (_state) {
+        case TRACKER_UNKNOWN:       return "初始化中 (等待穩定讀數)";
         case TRACKER_IDLE:          return "待機 (水杯靜置)";
         case TRACKER_CUP_LIFTED:    return "水杯拿起";
         case TRACKER_DRINKING:      return "喝水中";
@@ -51,16 +58,19 @@ void DrinkTracker::update() {
     bool isStable = _scale.isStable();
     unsigned long now = millis();
 
-    // 檢查午夜跨日自動重設
+    // 檢查跨日自動重設。只有在系統時間校時過之後才可能成立；
+    // 本裝置唯一的時間來源是手機透過 BLE 送來的 set_time。
     time_t nowSec = time(nullptr);
-    if (nowSec > 1600000000) {
-        struct tm timeinfo;
-        localtime_r(&nowSec, &timeinfo);
-        if (_currentMDay == -1) {
-            _currentMDay = timeinfo.tm_mday;
-        } else if (timeinfo.tm_mday != _currentMDay) {
-            Serial.printf("[DrinkTracker] 🌙 午夜跨日，自動重設今日喝水累計 (昨日: %dml)\n", _todayTotalMl);
-            _currentMDay = timeinfo.tm_mday;
+    if (nowSec > TIME_SYNCED_EPOCH_MIN) {
+        const int stamp = dayStampFrom(nowSec);
+        if (_todayStamp == 0) {
+            // 第一次取得有效時間：沿用現有累計，只把日期補記起來
+            _todayStamp = stamp;
+            saveSettings();
+        } else if (stamp != _todayStamp) {
+            Serial.printf("[DrinkTracker] 🌙 跨日 (%d -> %d)，自動重設今日喝水累計 (前一日: %dml)\n",
+                          _todayStamp, stamp, _todayTotalMl);
+            _todayStamp = stamp;
             _todayTotalMl = 0;
             saveSettings();
         }
@@ -193,6 +203,11 @@ void DrinkTracker::dismissReminder() {
 
 void DrinkTracker::resetDailyTotal() {
     _todayTotalMl = 0;
+    // 手動重設也要重新蓋上今天的日期戳，否則下一輪 update() 會再判一次跨日
+    const time_t nowSec = time(nullptr);
+    if (nowSec > TIME_SYNCED_EPOCH_MIN) {
+        _todayStamp = dayStampFrom(nowSec);
+    }
     saveSettings();
     Serial.println("[DrinkTracker] 今日喝水量已重設為 0 ml");
 }
@@ -201,7 +216,7 @@ void DrinkTracker::addRecord(EventType type, int amountMl, int remainingMl) {
     DrinkRecord record;
     time_t nowSec = time(nullptr);
     record.unixTimestamp = nowSec;
-    if (nowSec > 1600000000) {
+    if (nowSec > TIME_SYNCED_EPOCH_MIN) {
         struct tm timeinfo;
         localtime_r(&nowSec, &timeinfo);
         snprintf(record.timeStr, sizeof(record.timeStr), "%02d:%02d:%02d",
@@ -265,6 +280,7 @@ void DrinkTracker::saveSettings() {
     _prefs.putFloat("min_drink", _minDrinkThreshold);
     _prefs.putFloat("empty_cup", _emptyCupThreshold);
     _prefs.putInt("today_total", _todayTotalMl);
+    _prefs.putInt("today_ymd", _todayStamp);
     _prefs.end();
 }
 
@@ -275,5 +291,6 @@ void DrinkTracker::loadSettings() {
     _minDrinkThreshold = _prefs.getFloat("min_drink", MIN_DRINK_THRESHOLD_G);
     _emptyCupThreshold = _prefs.getFloat("empty_cup", EMPTY_CUP_THRESHOLD_G);
     _todayTotalMl = _prefs.getInt("today_total", 0);
+    _todayStamp = _prefs.getInt("today_ymd", 0);
     _prefs.end();
 }

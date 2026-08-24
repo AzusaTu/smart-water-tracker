@@ -11,7 +11,7 @@
 // ==========================================
 // 預設演算法與運作參數
 // ==========================================
-#define DEFAULT_CALIBRATION_FACTOR   420.0f  // 預設校準係數 (可透過網頁校準更新)
+#define DEFAULT_CALIBRATION_FACTOR   420.0f  // 預設校準係數 (可透過 Serial CAL: 指令更新)
 #define DEFAULT_DAILY_GOAL_ML        2000    // 每日飲水目標 (毫升)
 #define DEFAULT_REMINDER_MINUTES     45      // 久未喝水提醒間隔 (分鐘)
 #define MIN_DRINK_THRESHOLD_G        15.0f   // 判定為喝水的最小重量減少量 (克/毫升)
@@ -21,23 +21,10 @@
 #define STABLE_SAMPLES_REQUIRED      4       // 連續穩定取樣次數
 
 // ==========================================
-// 儲存與網路設定
+// 儲存設定
 // ==========================================
-#define PREFS_NAMESPACE             "water_app"
-#define AP_SSID_NAME                "WaterTracker"
-#define AP_DEFAULT_PASSWORD         "12345678"
-#define MDNS_HOSTNAME               "water"   // 可透過 http://water.local 存取
+// 判定系統時間是否已校時過的下限 (2020-09-13)。未校時的 time() 只會回傳開機秒數。
+// 本裝置沒有 WiFi/NTP，唯一的時間來源是手機透過 BLE 送來的 set_time。
+#define TIME_SYNCED_EPOCH_MIN       1600000000
 
-// 系統設定結構體
-struct AppSettings {
-    float calibrationFactor;
-    long  zeroOffset;
-    int   dailyGoalMl;
-    int   reminderMinutes;
-    float minDrinkThresholdG;
-    float emptyCupThresholdG;
-    char  wifiSSID[33];
-    char  wifiPassword[65];
-    char  lineToken[65];
-    char  webhookUrl[128];
-};
+#define PREFS_NAMESPACE             "water_app"

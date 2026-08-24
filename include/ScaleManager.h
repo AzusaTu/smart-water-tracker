@@ -16,10 +16,11 @@ public:
     float getWeight();
 
     // 取得平滑後重量 (克)
-    float getFilteredWeight();
+    // virtual: 讓測試能以假的秤驅動 DrinkTracker 狀態機
+    virtual float getFilteredWeight();
 
     // 取得目前讀數是否處於穩定狀態
-    bool isStable();
+    virtual bool isStable();
 
     // 去皮 (將當前重量設為 0)
     void tare(uint8_t times = 10);
