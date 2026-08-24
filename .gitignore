@@ -1,9 +1,23 @@
-# PlatformIO
+# PlatformIO & Firmware
 .pio
 .pio_core
 .pioenvs
 .piolibdeps
 .clangd
+
+# Node.js & Backend
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.local
+.env.*.local
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm
 
 # IDEs and Editors
 .vscode/.browse.c_cpp.db*
