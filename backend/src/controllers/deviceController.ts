@@ -40,15 +40,17 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
 
     if (existingDevice) {
       if (existingDevice.user_id !== userId) {
-        // If device is already claimed by someone else, check claimCode proof for hardware ownership claiming
+        // Device is bound to another user. Require hardware claim code to transfer ownership.
         if (existingDevice.claim_code && claimCode && existingDevice.claim_code === claimCode) {
-          // Valid claim code provided! Transfer device ownership to the verified owner
+          // Valid proof of hardware possession!
+          // Transfer ownership and rotate BOTH device_token AND claim_code to prevent infinite re-claiming
           const newDeviceToken = `dvt_${crypto.randomBytes(24).toString('hex')}`;
+          const newRotatedClaimCode = crypto.randomBytes(16).toString('hex');
           const now = new Date().toISOString();
 
           db.prepare(
-            `UPDATE devices SET user_id = ?, device_token = ?, name = ?, created_at = ? WHERE id = ?`
-          ).run(userId, newDeviceToken, name || existingDevice.name || null, now, deviceId);
+            `UPDATE devices SET user_id = ?, device_token = ?, claim_code = ?, name = ?, created_at = ? WHERE id = ?`
+          ).run(userId, newDeviceToken, newRotatedClaimCode, name || existingDevice.name || null, now, deviceId);
 
           const response: DeviceResponse = {
             id: deviceId,
@@ -62,12 +64,14 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
 
           res.status(200).json({
             device: response,
-            message: 'Device claimed successfully via claim code. Device ownership transferred.',
+            message: 'Device claimed successfully. Device ownership transferred and claim code rotated to prevent unauthorized re-claiming.',
           });
           return;
         }
 
-        res.status(409).json({ error: 'Device is already bound to another user' });
+        res.status(409).json({
+          error: 'Device is already bound to another user. Provide the current hardware claimCode to transfer ownership.',
+        });
         return;
       }
 
@@ -85,6 +89,7 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
       return;
     }
 
+    // First-time binding of a new device
     const deviceToken = `dvt_${crypto.randomBytes(24).toString('hex')}`;
     const now = new Date().toISOString();
 

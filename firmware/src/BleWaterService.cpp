@@ -52,6 +52,8 @@ public:
             _service._pendingCommand = BleWaterService::PENDING_TARE;
         } else if (strcmp(action, "reset_daily") == 0) {
             _service._pendingCommand = BleWaterService::PENDING_RESET_DAILY;
+        } else if (strcmp(action, "rotate_claim") == 0) {
+            _service._pendingCommand = BleWaterService::PENDING_ROTATE_CLAIM;
         } else if (strcmp(action, "set_time") == 0) {
             const long long epoch = request["epoch"] | 0LL;
             if (epoch < TIME_SYNCED_EPOCH_MIN) {
@@ -103,9 +105,15 @@ public:
 };
 
 BleWaterService::BleWaterService(const String& deviceId) : _deviceId(deviceId) {
-    char buf[9];
-    snprintf(buf, sizeof(buf), "%08x", static_cast<uint32_t>(micros() ^ 0xA5A5A5A5));
+    // 64-bit boot session ID
+    const uint64_t session = (static_cast<uint64_t>(micros()) << 32) ^ static_cast<uint64_t>(0xA5A5A5A55A5A5A5AULL);
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(session));
     _bootSessionId = String(buf);
+
+    char claimBuf[17];
+    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(session ^ 0xF0F0F0F00F0F0F0FULL));
+    _claimSecret = String(claimBuf);
 }
 
 void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTracker* tracker) {
@@ -113,9 +121,16 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     _scale = scale;
     _tracker = tracker;
 
-    char buf[9];
-    snprintf(buf, sizeof(buf), "%08x", static_cast<uint32_t>(esp_random()));
+    // Generate 64-bit random boot session ID and hardware claim secret
+    const uint64_t session = (static_cast<uint64_t>(esp_random()) << 32) | static_cast<uint64_t>(esp_random());
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(session));
     _bootSessionId = String(buf);
+
+    const uint64_t claim = (static_cast<uint64_t>(esp_random()) << 32) | static_cast<uint64_t>(esp_random());
+    char claimBuf[17];
+    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(claim));
+    _claimSecret = String(claimBuf);
 
     const String suffix = _deviceId.length() >= 4
         ? _deviceId.substring(_deviceId.length() - 4)
@@ -157,6 +172,18 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     advertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
     Serial.printf("[BLE] 服務已啟動: %s (%s, session: %s)\n", advertisedName.c_str(), _deviceId.c_str(), _bootSessionId.c_str());
+}
+
+void BleWaterService::rotateClaimSecret() {
+    const uint64_t claim = (static_cast<uint64_t>(esp_random()) << 32) | static_cast<uint64_t>(esp_random());
+    char claimBuf[17];
+    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(claim));
+    _claimSecret = String(claimBuf);
+
+    if (_impl != nullptr && _impl->summary != nullptr) {
+        _impl->summary->setValue(summaryJson().c_str());
+    }
+    Serial.printf("[BLE] 硬體配對金鑰已更新 (rotateClaimSecret): %s\n", _claimSecret.c_str());
 }
 
 void BleWaterService::tare() {
@@ -206,6 +233,10 @@ void BleWaterService::processPendingCommands() {
         tare();
         response["action"] = "tare";
         response["currentWeight"] = _currentWeight;
+    } else if (pending == PENDING_ROTATE_CLAIM) {
+        rotateClaimSecret();
+        response["action"] = "rotate_claim";
+        response["claimSecret"] = _claimSecret;
     } else if (pending == PENDING_SET_TIME) {
         applyDeviceTime(_pendingEpoch, _pendingTzOffsetMinutes);
         response["action"] = "set_time";
@@ -255,7 +286,7 @@ void BleWaterService::recordEvent(EventType type, time_t occurredAt, int amountM
     event.amountMl = amountMl;
     event.remainingMl = remainingMl;
     event.todayTotalMl = todayTotalMl;
-    // Format: deviceId-occurredAt-bootSessionId-seq (Unique across reboots even when unsynced)
+    // Format: deviceId-occurredAt-bootSessionId-seq (64-bit boot session ensures zero collision)
     event.id = _deviceId + "-" + String(static_cast<unsigned long>(occurredAt)) + "-" + _bootSessionId + "-" + String(_nextSequence++);
 
     _events[_eventHead] = event;
@@ -330,6 +361,7 @@ String BleWaterService::summaryJson() const {
     document["currentWeight"] = _currentWeight;
     document["isStable"] = _isScaleStable;
     document["timeSynced"] = isClockSynced();
+    document["claimSecret"] = _claimSecret;
     const String latestId = latestEventId();
     if (latestId.length() == 0) {
         document["latestEventId"] = nullptr;

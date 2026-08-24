@@ -28,3 +28,22 @@ jobs:
 
       - name: Run TypeScript Build
         run: npm run backend:build
+
+  firmware-build:
+    name: ESP32 Firmware Build (PlatformIO)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build Firmware
+        run: pio run -d firmware

@@ -63,15 +63,16 @@ function loadSchemaSql(): string {
 }
 
 /**
- * Automatically migrates existing database schemas on disk to match current requirements.
+ * Automatically and safely migrates database schemas.
+ * Fail-closed: Throws on failure to prevent running with an inconsistent or insecure schema.
  */
-function migrateDatabase(db: DatabaseSync): void {
+export function migrateDatabase(db: DatabaseSync): void {
   try {
     const versionRow = db.prepare('PRAGMA user_version;').get() as unknown as { user_version: number } | undefined;
     const currentVersion = versionRow?.user_version ?? 0;
 
     if (currentVersion < 1) {
-      // Check if drink_records exists and has old global unique index on event_id
+      // Check if drink_records exists and needs rebuilding to UNIQUE(user_id, event_id)
       const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='drink_records'").get();
       if (tableExists) {
         db.exec(`
@@ -108,18 +109,15 @@ function migrateDatabase(db: DatabaseSync): void {
         const deviceCols = db.prepare("PRAGMA table_info('devices');").all() as unknown as { name: string }[];
         const hasClaimCode = deviceCols.some((col) => col.name === 'claim_code');
         if (!hasClaimCode) {
-          try {
-            db.exec('ALTER TABLE devices ADD COLUMN claim_code TEXT;');
-          } catch {
-            // Column may already exist
-          }
+          db.exec('ALTER TABLE devices ADD COLUMN claim_code TEXT;');
         }
       }
     }
 
     db.exec('PRAGMA user_version = 2;');
   } catch (err) {
-    console.error('[Database Migration Warning]', err);
+    console.error('[FATAL Database Migration Error]', err);
+    throw new Error(`Database migration failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -148,10 +146,8 @@ export function initDatabase(dbPath?: string): DatabaseSync {
   const schemaSql = loadSchemaSql();
   db.exec(schemaSql);
 
-  // Apply automatic migrations for existing databases on disk
-  if (targetPath !== ':memory:') {
-    migrateDatabase(db);
-  }
+  // Apply automatic migrations
+  migrateDatabase(db);
 
   dbInstance = db;
   return dbInstance;

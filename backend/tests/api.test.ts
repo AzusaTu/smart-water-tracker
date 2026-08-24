@@ -1,6 +1,9 @@
 import request from 'supertest';
+import fs from 'fs';
+import path from 'path';
+import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/app';
-import { initDatabase, closeDatabase, getDatabase } from '../src/database/db';
+import { initDatabase, closeDatabase, migrateDatabase } from '../src/database/db';
 import { Express } from 'express';
 
 describe('Smart Water Tracker Backend API Test Suite', () => {
@@ -426,7 +429,7 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
       expect(res1Dup.body.record.amountMl).toBe(250);
     });
 
-    it('Hardware Claiming: claimCode transfers device ownership safely', async () => {
+    it('Hardware Claiming & Single-Use Rotation: transfers ownership and prevents infinite reclaim', async () => {
       const claimDeviceId = `water_claim_${Date.now().toString(16)}`;
       const secretClaimCode = 'CLAIM_SECRET_987';
 
@@ -451,7 +454,7 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
         });
       expect(bindWrong.status).toBe(409);
 
-      // 3. User 2 claims with correct claimCode -> 200 OK ownership transferred!
+      // 3. User 2 claims with correct claimCode -> 200 OK ownership transferred and secret rotated!
       const bindCorrect = await request(app)
         .post('/api/v1/devices')
         .set('Authorization', `Bearer ${user2Token}`)
@@ -463,6 +466,16 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
       expect(bindCorrect.status).toBe(200);
       expect(bindCorrect.body.message).toContain('transferred');
       expect(bindCorrect.body.device.deviceToken).toMatch(/^dvt_/);
+
+      // 4. User 1 tries to reclaim using the OLD secretClaimCode -> REJECTED (409) because code was rotated!
+      const reclaimOld = await request(app)
+        .post('/api/v1/devices')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          deviceId: claimDeviceId,
+          claimCode: secretClaimCode,
+        });
+      expect(reclaimOld.status).toBe(409);
     });
 
     it('POST /api/v1/devices/:id/token/rotate rotates token and invalidates old token', async () => {
@@ -519,6 +532,91 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
 
       expect(createdCount).toBe(1);
       expect(duplicatedCount).toBe(4);
+    });
+  });
+
+  describe('9. Database Migration & Schema Evolution (v1 to v2)', () => {
+    const tempDbPath = path.resolve(__dirname, `test_migration_${Date.now()}.db`);
+
+    afterAll(() => {
+      if (fs.existsSync(tempDbPath)) {
+        fs.unlinkSync(tempDbPath);
+      }
+    });
+
+    it('migrates legacy v1 database to v2 with multi-tenant event uniqueness and claim_code', () => {
+      const legacyDb = new DatabaseSync(tempDbPath);
+      legacyDb.exec('PRAGMA foreign_keys = OFF;');
+
+      // 1. Create legacy v1 schema with global UNIQUE(event_id) and missing claim_code
+      legacyDb.exec(`
+        CREATE TABLE users (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          display_name TEXT,
+          daily_goal_ml INTEGER DEFAULT 2000,
+          created_at TEXT,
+          updated_at TEXT
+        );
+
+        CREATE TABLE devices (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          device_token TEXT UNIQUE NOT NULL,
+          name TEXT,
+          last_seen_at TEXT,
+          created_at TEXT
+        );
+
+        CREATE TABLE drink_records (
+          id TEXT PRIMARY KEY,
+          event_id TEXT UNIQUE,
+          user_id TEXT NOT NULL,
+          device_id TEXT,
+          event_type TEXT DEFAULT 'drink',
+          amount_ml INTEGER NOT NULL,
+          remaining_ml INTEGER,
+          occurred_at TEXT NOT NULL,
+          synced_at TEXT
+        );
+      `);
+
+      // 2. Insert legacy test data
+      legacyDb.exec(`
+        INSERT INTO users (id, email, password_hash) VALUES ('u1', 'u1@test.com', 'hash1'), ('u2', 'u2@test.com', 'hash2');
+        INSERT INTO devices (id, user_id, device_token) VALUES ('dev1', 'u1', 'tok1');
+        INSERT INTO drink_records (id, event_id, user_id, amount_ml, occurred_at) VALUES ('rec1', 'evt_shared_v1', 'u1', 200, '2026-08-24T10:00:00.000Z');
+      `);
+
+      // 3. Execute migration
+      migrateDatabase(legacyDb);
+
+      // 4. Verify user_version is 2
+      const versionRow = legacyDb.prepare('PRAGMA user_version;').get() as unknown as { user_version: number };
+      expect(versionRow.user_version).toBe(2);
+
+      // 5. Verify claim_code column exists in devices table
+      const deviceCols = legacyDb.prepare("PRAGMA table_info('devices');").all() as unknown as { name: string }[];
+      expect(deviceCols.some((c) => c.name === 'claim_code')).toBe(true);
+
+      // 6. Verify cross-tenant event isolation: User 2 CAN insert same 'evt_shared_v1' without UNIQUE constraint violation
+      expect(() => {
+        legacyDb.prepare(`
+          INSERT INTO drink_records (id, event_id, user_id, amount_ml, occurred_at)
+          VALUES ('rec2', 'evt_shared_v1', 'u2', 300, '2026-08-24T10:05:00.000Z')
+        `).run();
+      }).not.toThrow();
+
+      // 7. Verify within-user duplicate still fails unique constraint
+      expect(() => {
+        legacyDb.prepare(`
+          INSERT INTO drink_records (id, event_id, user_id, amount_ml, occurred_at)
+          VALUES ('rec3', 'evt_shared_v1', 'u1', 200, '2026-08-24T10:10:00.000Z')
+        `).run();
+      }).toThrow();
+
+      legacyDb.close();
     });
   });
 });

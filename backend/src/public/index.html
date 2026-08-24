@@ -531,6 +531,10 @@
                 <input type="text" id="bindDeviceId" class="form-control" placeholder="water_xxxx" required>
               </div>
               <div class="form-group">
+                <label>硬體配對碼 (Claim Code / Secret，選填)</label>
+                <input type="text" id="bindClaimCode" class="form-control" placeholder="由 BLE 掃描取得之 16 位金鑰">
+              </div>
+              <div class="form-group">
                 <label>自訂水杯名稱</label>
                 <input type="text" id="bindDeviceName" class="form-control" placeholder="辦公桌上的水杯">
               </div>
@@ -829,6 +833,7 @@
     async function handleBindDevice(e) {
       e.preventDefault();
       const deviceId = document.getElementById('bindDeviceId').value;
+      const claimCode = document.getElementById('bindClaimCode').value.trim() || undefined;
       const name = document.getElementById('bindDeviceName').value;
 
       try {
@@ -838,13 +843,14 @@
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ deviceId, name })
+          body: JSON.stringify({ deviceId, claimCode, name })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '綁定失敗');
 
         showToast('裝置綁定成功！');
         document.getElementById('bindDeviceId').value = '';
+        document.getElementById('bindClaimCode').value = '';
         document.getElementById('bindDeviceName').value = '';
         toggleBindModal();
 

@@ -33,6 +33,7 @@ public:
     void recordDrink(time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
     void recordRefill(time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
     void tare();
+    void rotateClaimSecret();
 
     // BLE callback 跑在 BLE host task。tare 會 bit-bang HX711、reset_daily 會寫 NVS，
     // 兩者都與主迴圈競爭同一份硬體/儲存，因此 callback 只排隊、由 loop() 呼叫本函式執行。
@@ -42,6 +43,7 @@ public:
     String latestEventId() const;
     String deviceId() const { return _deviceId; }
     String bootSessionId() const { return _bootSessionId; }
+    String claimSecret() const { return _claimSecret; }
 
 private:
     friend class WaterSummaryCallbacks;
@@ -53,10 +55,12 @@ private:
         PENDING_TARE,
         PENDING_RESET_DAILY,
         PENDING_SET_TIME,
+        PENDING_ROTATE_CLAIM,
     };
 
     String _deviceId;
     String _bootSessionId;
+    String _claimSecret;
     // payload 一律先寫，最後才寫 _pendingCommand —— 後者是「發佈」動作
     volatile time_t _pendingEpoch = 0;
     volatile int _pendingTzOffsetMinutes = 0;
