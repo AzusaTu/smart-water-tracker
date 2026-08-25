@@ -78,7 +78,7 @@ public:
     explicit WaterCommandCallbacks(BleWaterService& service) : _service(service) {}
 
     void onWrite(BLECharacteristic* characteristic) override {
-        const String value = characteristic->getValue();
+        const String value = String(characteristic->getValue().c_str());
         JsonDocument request;
         const DeserializationError error = deserializeJson(request, value);
         if (error) {
@@ -114,7 +114,7 @@ public:
     explicit WaterHistorySyncCallbacks(BleWaterService& service) : _service(service) {}
 
     void onWrite(BLECharacteristic* characteristic) override {
-        const String value = characteristic->getValue();
+        const String value = String(characteristic->getValue().c_str());
         JsonDocument request;
         const DeserializationError error = deserializeJson(request, value);
         if (error) {
