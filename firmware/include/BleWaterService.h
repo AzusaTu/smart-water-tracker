@@ -33,7 +33,7 @@ public:
     void recordDrink(time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
     void recordRefill(time_t occurredAt, int amountMl, int remainingMl, int todayTotalMl);
     void tare();
-    void rotateClaimSecret();
+    bool rotateClaimSecret();
 
     // BLE callback 跑在 BLE host task。tare 會 bit-bang HX711、reset_daily 會寫 NVS，
     // 兩者都與主迴圈競爭同一份硬體/儲存，因此 callback 只排隊、由 loop() 呼叫本函式執行。

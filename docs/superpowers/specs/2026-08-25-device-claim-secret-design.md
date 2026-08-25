@@ -14,11 +14,11 @@ claim secrets.
 - The App may read the secret only through a local BLE connection. The backend
   receives it as `claimCode` only when initially binding or transferring a
   device.
-- A transfer is an explicit two-phase App operation: issue `rotate_claim` over
-  BLE, read the replacement secret, then call `POST /api/v1/devices` with that
-  replacement secret. The backend validates the new secret against the stored
-  old secret, then atomically changes owner, device token, and stored claim
-  secret to the replacement secret.
+- A transfer is an explicit two-phase App operation: read and retain the current
+  secret, issue `rotate_claim` over BLE, then call `POST /api/v1/devices` with
+  `claimCode` (the retained old secret) and `newClaimCode` (the replacement).
+  The backend validates the old secret, then atomically changes owner, device
+  token, and stored claim secret to the replacement.
 - If the backend request fails after the BLE rotation, the App retains the new
   secret and retries the same transfer request. It never tries to restore the
   old secret.

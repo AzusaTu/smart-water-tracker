@@ -5,6 +5,7 @@
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include <Preferences.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -20,6 +21,44 @@ public:
     BLECharacteristic* historySync = nullptr;
     BLECharacteristic* command = nullptr;
 };
+
+namespace {
+constexpr char CLAIM_SECRET_KEY[] = "claim_secret";
+
+String generateClaimSecret() {
+    const uint64_t claim = (static_cast<uint64_t>(esp_random()) << 32) | static_cast<uint64_t>(esp_random());
+    char claimBuf[17];
+    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(claim));
+    return String(claimBuf);
+}
+
+String loadOrCreateClaimSecret() {
+    Preferences prefs;
+    if (!prefs.begin(PREFS_NAMESPACE, false)) {
+        Serial.println("[BLE] 無法開啟認領金鑰儲存空間");
+        return "";
+    }
+
+    String claimSecret = prefs.getString(CLAIM_SECRET_KEY, "");
+    if (claimSecret.length() == 0) {
+        claimSecret = generateClaimSecret();
+        prefs.putString(CLAIM_SECRET_KEY, claimSecret);
+    }
+    prefs.end();
+    return claimSecret;
+}
+
+bool persistClaimSecret(const String& claimSecret) {
+    Preferences prefs;
+    if (!prefs.begin(PREFS_NAMESPACE, false)) {
+        Serial.println("[BLE] 無法儲存認領金鑰");
+        return false;
+    }
+    const bool saved = prefs.putString(CLAIM_SECRET_KEY, claimSecret) > 0;
+    prefs.end();
+    return saved;
+}
+}  // namespace
 
 class WaterSummaryCallbacks final : public BLECharacteristicCallbacks {
 public:
@@ -111,9 +150,6 @@ BleWaterService::BleWaterService(const String& deviceId) : _deviceId(deviceId) {
     snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(session));
     _bootSessionId = String(buf);
 
-    char claimBuf[17];
-    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(session ^ 0xF0F0F0F00F0F0F0FULL));
-    _claimSecret = String(claimBuf);
 }
 
 void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTracker* tracker) {
@@ -127,10 +163,7 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(session));
     _bootSessionId = String(buf);
 
-    const uint64_t claim = (static_cast<uint64_t>(esp_random()) << 32) | static_cast<uint64_t>(esp_random());
-    char claimBuf[17];
-    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(claim));
-    _claimSecret = String(claimBuf);
+    _claimSecret = loadOrCreateClaimSecret();
 
     const String suffix = _deviceId.length() >= 4
         ? _deviceId.substring(_deviceId.length() - 4)
@@ -174,16 +207,18 @@ void BleWaterService::begin(const String& deviceId, ScaleManager* scale, DrinkTr
     Serial.printf("[BLE] 服務已啟動: %s (%s, session: %s)\n", advertisedName.c_str(), _deviceId.c_str(), _bootSessionId.c_str());
 }
 
-void BleWaterService::rotateClaimSecret() {
-    const uint64_t claim = (static_cast<uint64_t>(esp_random()) << 32) | static_cast<uint64_t>(esp_random());
-    char claimBuf[17];
-    snprintf(claimBuf, sizeof(claimBuf), "%016llx", static_cast<unsigned long long>(claim));
-    _claimSecret = String(claimBuf);
+bool BleWaterService::rotateClaimSecret() {
+    const String replacement = generateClaimSecret();
+    if (!persistClaimSecret(replacement)) {
+        return false;
+    }
+    _claimSecret = replacement;
 
     if (_impl != nullptr && _impl->summary != nullptr) {
         _impl->summary->setValue(summaryJson().c_str());
     }
-    Serial.printf("[BLE] 硬體配對金鑰已更新 (rotateClaimSecret): %s\n", _claimSecret.c_str());
+    Serial.println("[BLE] 硬體配對金鑰已更新");
+    return true;
 }
 
 void BleWaterService::tare() {
@@ -234,9 +269,14 @@ void BleWaterService::processPendingCommands() {
         response["action"] = "tare";
         response["currentWeight"] = _currentWeight;
     } else if (pending == PENDING_ROTATE_CLAIM) {
-        rotateClaimSecret();
+        if (!rotateClaimSecret()) {
+            response["success"] = false;
+            response["error"] = "claim_secret_persist_failed";
+        }
         response["action"] = "rotate_claim";
-        response["claimSecret"] = _claimSecret;
+        if (response["success"].as<bool>()) {
+            response["claimSecret"] = _claimSecret;
+        }
     } else if (pending == PENDING_SET_TIME) {
         applyDeviceTime(_pendingEpoch, _pendingTzOffsetMinutes);
         response["action"] = "set_time";

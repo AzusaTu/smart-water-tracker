@@ -11,8 +11,8 @@
   - **使用者**：Email + bcrypt 雜湊密碼 + 30 天 JWT Token，支援 Rate Limiting 防禦暴力破解。
   - **ESP32 裝置**：非對稱長效 **Device Token** (`dvt_...`)，支援遮罩顯示與即時輪換 (`/devices/:id/token/rotate`)。
 - **硬體佔有權防護 (Hardware Claiming Proof)**：
-  - 裝置首次綁定支援 `claimCode`（由 ESP32 於 BLE 廣播的 16 位金鑰）。
-  - 裝置轉移擁有權時驗證 `claimCode`，並於轉移成功後**單次作廢並輪換金鑰**，防止惡意搶綁與無限互搶。
+  - 裝置首次綁定支援 `claimCode`（由 ESP32 透過本機 BLE 提供、並保存於 NVS 的 16 位金鑰）。
+  - 裝置轉移時，App 先以 BLE 輪替裝置金鑰，接著提交舊 `claimCode` 與新 `newClaimCode`；後端驗證舊值後保存新值，防止舊持有人無限互搶。
 - **韌體事件對齊與冪等去重**：
   - 64 位元開機 Session ID (`deviceId-occurredAt-bootSessionId-seq`)，徹底消除未校時重開機造成的事件 ID 碰撞。
   - 支援喝水 (`drink`) 與補水 (`refill`) 事件分流處理。
@@ -43,7 +43,7 @@
 
 | Method | Endpoint | 說明 | 驗證需求 |
 |:---|:---|:---|:---|
-| `POST` | `/devices` | 綁定新裝置 / 驗證 `claimCode` 轉移擁有權 | User JWT |
+| `POST` | `/devices` | 綁定新裝置；轉讓時提交 `claimCode` 與 `newClaimCode` | User JWT |
 | `GET` | `/devices` | 取得使用者所有裝置列表（Token 遮罩） | User JWT |
 | `POST` | `/devices/:id/token/rotate` | 重新產生 Device Token（舊 Token 即時作廢） | User JWT |
 | `DELETE` | `/devices/:id` | 解除裝置綁定並註銷憑證 | User JWT |

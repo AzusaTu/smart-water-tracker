@@ -7,6 +7,7 @@ import { AuthenticatedRequest, Device, DeviceResponse } from '../types';
 const bindDeviceSchema = z.object({
   deviceId: z.string().min(3, 'Device ID must be at least 3 characters'),
   claimCode: z.string().optional(),
+  newClaimCode: z.string().min(1, 'New claim code must not be empty').optional(),
   name: z.string().optional(),
 });
 
@@ -31,7 +32,7 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
       return;
     }
 
-    const { deviceId, claimCode, name } = bindDeviceSchema.parse(req.body);
+    const { deviceId, claimCode, newClaimCode, name } = bindDeviceSchema.parse(req.body);
     const db = getDatabase();
 
     const existingDevice = db.prepare('SELECT * FROM devices WHERE id = ?').get(deviceId) as unknown as
@@ -42,15 +43,21 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
       if (existingDevice.user_id !== userId) {
         // Device is bound to another user. Require hardware claim code to transfer ownership.
         if (existingDevice.claim_code && claimCode && existingDevice.claim_code === claimCode) {
-          // Valid proof of hardware possession!
-          // Transfer ownership and rotate BOTH device_token AND claim_code to prevent infinite re-claiming
+          if (!newClaimCode) {
+            res.status(400).json({
+              error: 'Provide newClaimCode after rotating the claim secret on the device over BLE.',
+            });
+            return;
+          }
+
+          // The caller proves possession with the old secret and supplies the
+          // replacement secret already persisted on the physical device.
           const newDeviceToken = `dvt_${crypto.randomBytes(24).toString('hex')}`;
-          const newRotatedClaimCode = crypto.randomBytes(16).toString('hex');
           const now = new Date().toISOString();
 
           db.prepare(
             `UPDATE devices SET user_id = ?, device_token = ?, claim_code = ?, name = ?, created_at = ? WHERE id = ?`
-          ).run(userId, newDeviceToken, newRotatedClaimCode, name || existingDevice.name || null, now, deviceId);
+          ).run(userId, newDeviceToken, newClaimCode, name || existingDevice.name || null, now, deviceId);
 
           const response: DeviceResponse = {
             id: deviceId,
@@ -64,13 +71,13 @@ export function bindDevice(req: AuthenticatedRequest, res: Response, next: NextF
 
           res.status(200).json({
             device: response,
-            message: 'Device claimed successfully. Device ownership transferred and claim code rotated to prevent unauthorized re-claiming.',
+            message: 'Device claimed successfully. Ownership transferred and the hardware-rotated claim code was saved.',
           });
           return;
         }
 
         res.status(409).json({
-          error: 'Device is already bound to another user. Provide the current hardware claimCode to transfer ownership.',
+          error: 'Device is already bound to another user. Provide the current claimCode and a BLE-rotated newClaimCode to transfer ownership.',
         });
         return;
       }

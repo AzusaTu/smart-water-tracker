@@ -31,6 +31,10 @@ void test_refill_event_recording_and_64bit_boot_session() {
     // Even with occurredAt = 0 and seq = 0, event IDs from different boot sessions must be distinct!
     TEST_ASSERT_NOT_EQUAL(id1, id2);
     TEST_ASSERT_GREATER_THAN(20, id1.length());
+
+    const String claimBeforeRotation = service1.claimSecret();
+    TEST_ASSERT_TRUE(service1.rotateClaimSecret());
+    TEST_ASSERT_NOT_EQUAL(claimBeforeRotation, service1.claimSecret());
     TEST_ASSERT_NOT_EQUAL(service1.claimSecret(), "");
 }
 

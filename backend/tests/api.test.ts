@@ -429,9 +429,11 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
       expect(res1Dup.body.record.amountMl).toBe(250);
     });
 
-    it('Hardware Claiming & Single-Use Rotation: transfers ownership and prevents infinite reclaim', async () => {
+    it('Hardware Claiming: transfers ownership using the BLE-rotated replacement secret', async () => {
       const claimDeviceId = `water_claim_${Date.now().toString(16)}`;
-      const secretClaimCode = 'CLAIM_SECRET_987';
+      const oldClaimCode = 'CLAIM_SECRET_987';
+      const newClaimCode = 'CLAIM_SECRET_654';
+      const nextClaimCode = 'CLAIM_SECRET_321';
 
       // 1. User 1 registers device with a claimCode
       const bind1 = await request(app)
@@ -439,7 +441,7 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           deviceId: claimDeviceId,
-          claimCode: secretClaimCode,
+          claimCode: oldClaimCode,
           name: 'Original Bind',
         });
       expect(bind1.status).toBe(201);
@@ -454,28 +456,42 @@ describe('Smart Water Tracker Backend API Test Suite', () => {
         });
       expect(bindWrong.status).toBe(409);
 
-      // 3. User 2 claims with correct claimCode -> 200 OK ownership transferred and secret rotated!
+      // 3. User 2 proves possession with the old secret and submits the replacement
+      // secret that was already rotated and persisted on the physical device over BLE.
       const bindCorrect = await request(app)
         .post('/api/v1/devices')
         .set('Authorization', `Bearer ${user2Token}`)
         .send({
           deviceId: claimDeviceId,
-          claimCode: secretClaimCode,
+          claimCode: oldClaimCode,
+          newClaimCode,
           name: 'User 2 Claimed Cup',
         });
       expect(bindCorrect.status).toBe(200);
       expect(bindCorrect.body.message).toContain('transferred');
       expect(bindCorrect.body.device.deviceToken).toMatch(/^dvt_/);
 
-      // 4. User 1 tries to reclaim using the OLD secretClaimCode -> REJECTED (409) because code was rotated!
+      // 4. User 1 tries to reclaim using the old secret -> rejected.
       const reclaimOld = await request(app)
         .post('/api/v1/devices')
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           deviceId: claimDeviceId,
-          claimCode: secretClaimCode,
+          claimCode: oldClaimCode,
+          newClaimCode: nextClaimCode,
         });
       expect(reclaimOld.status).toBe(409);
+
+      // 5. The replacement secret is now authoritative and can transfer the device again.
+      const reclaimNew = await request(app)
+        .post('/api/v1/devices')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          deviceId: claimDeviceId,
+          claimCode: newClaimCode,
+          newClaimCode: nextClaimCode,
+        });
+      expect(reclaimNew.status).toBe(200);
     });
 
     it('POST /api/v1/devices/:id/token/rotate rotates token and invalidates old token', async () => {

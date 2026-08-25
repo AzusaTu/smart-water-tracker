@@ -531,8 +531,13 @@
                 <input type="text" id="bindDeviceId" class="form-control" placeholder="water_xxxx" required>
               </div>
               <div class="form-group">
-                <label>硬體配對碼 (Claim Code / Secret，選填)</label>
-                <input type="text" id="bindClaimCode" class="form-control" placeholder="由 BLE 掃描取得之 16 位金鑰">
+                <label>目前硬體配對碼 (Claim Code，選填)</label>
+                <input type="text" id="bindClaimCode" class="form-control" placeholder="由 BLE 讀取的目前金鑰">
+              </div>
+              <div class="form-group">
+                <label>新硬體配對碼（僅轉讓時）</label>
+                <input type="text" id="bindNewClaimCode" class="form-control" placeholder="先在 BLE 輪替後讀取的新金鑰">
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.35rem 0 0;">轉讓前先透過 BLE 輪替金鑰，再同時填入目前與新金鑰。</p>
               </div>
               <div class="form-group">
                 <label>自訂水杯名稱</label>
@@ -834,6 +839,7 @@
       e.preventDefault();
       const deviceId = document.getElementById('bindDeviceId').value;
       const claimCode = document.getElementById('bindClaimCode').value.trim() || undefined;
+      const newClaimCode = document.getElementById('bindNewClaimCode').value.trim() || undefined;
       const name = document.getElementById('bindDeviceName').value;
 
       try {
@@ -843,7 +849,7 @@
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ deviceId, claimCode, name })
+          body: JSON.stringify({ deviceId, claimCode, newClaimCode, name })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '綁定失敗');
@@ -851,6 +857,7 @@
         showToast('裝置綁定成功！');
         document.getElementById('bindDeviceId').value = '';
         document.getElementById('bindClaimCode').value = '';
+        document.getElementById('bindNewClaimCode').value = '';
         document.getElementById('bindDeviceName').value = '';
         toggleBindModal();
 
