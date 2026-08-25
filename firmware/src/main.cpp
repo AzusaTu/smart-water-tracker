@@ -25,6 +25,7 @@ void onTrackerEvent(EventType type, int amountMl, int remainingMl) {
         Serial.printf("[MAIN] 收到補水事件: +%dml, 杯中剩餘: %dml\n",
                       amountMl, remainingMl);
         notifier.notifyRefill();
+        bleWaterService.recordRefill(time(nullptr), amountMl, remainingMl, tracker.getTodayTotalMl());
     }
 }
 

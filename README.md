@@ -1,29 +1,70 @@
-# 🥤 智慧喝水偵測器 (ESP32-C3 SuperMini + HX711 5KG)
+# 🥤 Smart Water Tracker (智慧喝水追蹤器)
 
-以 **ESP32-C3 SuperMini** 搭配 **5KG 圓形秤架 (HX711 稱重模組)** 打造的桌面智慧喝水追蹤器。自動感應水杯拿起/放下、計算喝水量、辨識補水，並透過 **BLE** 把事件送給手機 App。
-
-## 設計原則：裝置只做偵測，不做統計
-
-裝置負責「**發生了什麼事**」，手機負責「**這些事代表什麼**」。
-
-| 裝置負責 | 手機負責 |
-| :--- | :--- |
-| HX711 取樣、濾波、穩定判斷 | 今日累計、目標、達成率 |
-| 校準係數與零點 | 提醒排程與推播通知 |
-| 事件偵測（拿起/放回 → 喝了幾 ml） | 歷史紀錄與統計 |
-| 未送出事件的重播緩衝 | 日期與時區的權威來源 |
-| 板載 LED 即時回饋 | |
-
-裝置**沒有 WiFi、沒有網頁介面、沒有雲端同步**。這是刻意的：避免裝置成為第二個真相來源
-（過去兩邊都保有「今日總量」，導致手機端的本地操作每次同步都被覆蓋），同時大幅降低發熱與 Flash 用量。
-
-手機端實作位於 `clock_in_app` 的 `lib/features/water/`。
+以 **ESP32-C3 SuperMini + HX711 5KG 稱重模組** 打造的桌面智慧喝水追蹤系統，搭配雲端 **RESTful API 後端服務** 與手機 App / 網頁儀表板。
 
 ---
 
-## 🛠️ 硬體接線指南
+## 📁 Monorepo 專案結構
 
-### 1. ESP32-C3 SuperMini 與 HX711
+本專案採用 Monorepo 結構管理韌體、後端與教學工作坊：
+
+```
+smart-water-tracker/
+├── package.json              # 根目錄 npm workspace 設定
+├── firmware/                 # 🔌 ESP32-C3 稱重感測韌體 (PlatformIO)
+│   ├── platformio.ini
+│   ├── include/
+│   ├── src/
+│   └── test/
+├── backend/                  # ☁️ Node.js + TypeScript + Express + SQLite 後端服務
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── src/
+│   │   ├── app.ts            # Express 應用與 API 路由
+│   │   ├── database/         # SQLite 資料庫與 Schema
+│   │   ├── controllers/      # Auth, Device, Water 業務邏輯
+│   │   ├── middleware/       # JWT 與 Device Token 雙重認證
+│   │   └── public/           # 簡易網頁管理儀表板
+│   └── tests/                # Jest + Supertest 自動化測試
+└── workshop/                 # 🎓 實體手作工作坊教材與證書生成器
+```
+
+---
+
+## ⚡ 快速開始
+
+### 1. 後端服務 (Backend)
+
+切換至 `backend` 目錄或在根目錄使用 npm scripts：
+
+```bash
+# 安裝依賴
+npm install
+
+# 啟動後端開發伺服器 (預設 Port 3000)
+npm run backend:dev
+
+# 執行後端自動化測試
+npm run backend:test
+```
+
+啟動後可開啟瀏覽器訪問 `http://localhost:3000` 查看網頁管理儀表板。
+
+### 2. 硬體韌體 (Firmware)
+
+進入 `firmware` 目錄，使用 PlatformIO 進行編譯與燒錄：
+
+```bash
+cd firmware
+pio run -t upload
+pio device monitor
+```
+
+---
+
+## 🔌 韌體設計與硬體接線
+
+### ESP32-C3 SuperMini 接線
 
 | HX711 稱重模組 | ESP32-C3 SuperMini | 說明 |
 | :--- | :--- | :--- |
@@ -32,11 +73,9 @@
 | **DT (Data)** | **GPIO 2** | 數據輸出訊號線 |
 | **SCK (Clock)**| **GPIO 3** | 時脈控制訊號線 |
 
-> 腳位定義在 [include/Config.h](include/Config.h)，若要改接請以該檔為準。
+> **提示**：ESP32-C3 板載藍色 LED 位於 **GPIO 8**。
 
-> **提示**：ESP32-C3 SuperMini 板載藍色 LED 位於 **GPIO 8**（程式已配置為喝水雙閃、未喝水警示脈衝閃爍）。
-
-### 2. 5KG 圓形秤架感測器 (4 線) 接 HX711
+### 5KG 圓形秤架感測器 (4 線) 接 HX711
 
 | 導線顏色 | HX711 稱重端子 | 說明 |
 | :--- | :--- | :--- |
@@ -45,97 +84,24 @@
 | **白色 (White)** | **A-** | 訊號負極 (Signal -) |
 | **綠色 (Green)** | **A+** | 訊號正極 (Signal +) |
 
-*(若測出重量數值方向相反，將 A+ 與 A- 對調即可)*
-
 ---
 
-## 🚀 專案結構
+## 📡 API 規格總覽
 
-- [platformio.ini](platformio.ini) : PlatformIO 環境與依賴庫設定
-- [include/Config.h](include/Config.h) : 腳位與系統常數設定
-- [include/BleProtocol.h](include/BleProtocol.h) : BLE UUID 與協定常數（與手機端共用）
-- [src/ScaleManager.cpp](src/ScaleManager.cpp) : HX711 讀取、滑動濾波與校準邏輯
-- [src/DrinkTracker.cpp](src/DrinkTracker.cpp) : 水杯狀態機、喝水/加水判斷、每日總計
-- [src/BleWaterService.cpp](src/BleWaterService.cpp) : BLE GATT 服務、事件重播緩衝、命令佇列
-- [src/Notifier.cpp](src/Notifier.cpp) : 板載 LED 燈效
-- [src/main.cpp](src/main.cpp) : 主程式入口
-
----
-
-## 💻 燒錄與使用說明
-
-將 ESP32-C3 SuperMini 透過 Type-C 連接至電腦，在終端機執行：
-
-```bash
-pio run -t upload
-```
-
-開啟序列埠監視器（115200 波特率）：
-
-```bash
-pio device monitor
-```
-
-### Serial 診斷指令
-
-| 指令 | 說明 |
-| :--- | :--- |
-| `TARE` | 去皮歸零 |
-| `CAL:<克數>` | 以已知重量校準，例如 `CAL:500` |
-| `RAW` | 顯示 HX711 連線狀態與原始 ADC 讀數 |
-| `STATUS` | 顯示重量、狀態機、今日累計與裝置時間 |
-| `RESET` | 重設今日累計 |
-
----
-
-## ⚖️ 感測器兩步校準
-
-1. **清空秤面** → 輸入 `TARE`（或從 App 按去皮）。
-2. **放上已知重量物品**（例如量過重量的水杯）→ 輸入 `CAL:<克數>`。
-
-校準係數與零點會存進 NVS，重開機不需要重做。
-
----
-
-## 📲 BLE 協定
-
-UUID 定義在 [include/BleProtocol.h](include/BleProtocol.h)，手機端使用同一組常數。
-
-### Command Characteristic
-
-寫入 JSON 即可下指令：
-
-| action | 參數 | 說明 |
-| :--- | :--- | :--- |
-| `tare` | 無 | 去皮歸零 |
-| `reset_daily` | 無 | 今日累計歸零 |
-| `set_time` | `epoch` (UTC 秒), `tzOffsetMinutes` (東為正) | 校時 |
-
-```json
-{"action": "set_time", "epoch": 1787918400, "tzOffsetMinutes": 480}
-```
-
-指令一律排入佇列由主迴圈執行，不在 BLE 回呼中直接操作 HX711 或 NVS
-（BLE 回呼跑在 BLE host task，與主迴圈競爭會讓 bit-bang 讀數損毀）。
-
-### 校時（重要）
-
-**手機端必須在每次連線後送一次 `set_time`。** 裝置沒有 WiFi，也就沒有 NTP，手機是它唯一的時間來源。
-
-未校時的話：跨日不會自動歸零，事件時間也無法對應到真實日期。一併送出時區，裝置的「一天」才會跟手機在同一個邊界換日。
-
-- Summary characteristic 的 `timeSynced` 會告訴你目前是否已校時。
-- 事件 JSON 的 `timeSynced` 為 `false` 時，`occurredAt` 會是 `0`（時間未知），請改用收到事件的時間。
-
----
-
-## 🧪 測試
-
-```bash
-pio test
-```
-
-需要接上開發板。測試會讀寫與韌體相同的 NVS namespace 並改動系統時間，**請勿對正在使用中的裝置執行**。
+| 端點 | 方法 | 認證方式 | 說明 |
+| :--- | :--- | :--- | :--- |
+| `/api/v1/health` | GET | 無 | 伺服器健康檢查 |
+| `/api/v1/auth/register` | POST | 無 | 用戶註冊 |
+| `/api/v1/auth/login` | POST | 無 | 用戶登入並發放 JWT |
+| `/api/v1/user/me` | GET / PUT | JWT | 取得 / 更新個人檔案與喝水目標 |
+| `/api/v1/devices` | POST / GET | JWT | 綁定智慧水杯 (生成 Device Token) / 列出裝置 |
+| `/api/v1/devices/:id` | DELETE | JWT | 解除裝置綁定 (撤銷 Token) |
+| `/api/v1/devices/:id/status` | GET | JWT | 取得裝置最後上傳時間與在線狀態 |
+| `/api/v1/water/records` | POST | Device Token | 裝置/App 上傳喝水與加水事件 (具備 eventId 冪等去重) |
+| `/api/v1/water/records` | GET | JWT | 查詢喝水歷程 (支援日期區間與分頁) |
+| `/api/v1/water/stats/daily` | GET | JWT | 當日喝水目標達成率與喝水/補水次數 |
+| `/api/v1/water/stats/weekly` | GET | JWT | 過去 7 日飲水趨勢與達標天數 |
+| `/api/v1/water/stats/monthly`| GET | JWT | 過去 30 日月統計與喝水連續天數 (Streak) |
 
 ---
 

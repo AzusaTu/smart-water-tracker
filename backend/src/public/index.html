@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🥤 Smart Water Tracker 智慧喝水追蹤器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --primary-light: #e0f2fe;
+      --primary-dark: #075985;
+      --secondary: #06b6d4;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 16px;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Navbar */
+    header {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .nav-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.25rem;
+      color: var(--primary-dark);
+      text-decoration: none;
+    }
+
+    .brand-icon {
+      font-size: 1.6rem;
+    }
+
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--primary-light);
+      padding: 0.4rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--primary-dark);
+    }
+
+    .btn {
+      padding: 0.55rem 1.2rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+
+    .btn-danger {
+      background: #fee2e2;
+      color: var(--danger);
+    }
+    .btn-danger:hover {
+      background: #fecaca;
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    /* Container */
+    main {
+      flex: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      width: 100%;
+    }
+
+    /* Auth Cards */
+    .auth-wrapper {
+      max-width: 440px;
+      margin: 3rem auto;
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .auth-tab {
+      flex: 1;
+      text-align: center;
+      padding: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #f8fafc;
+      color: var(--text-muted);
+      transition: 0.2s;
+    }
+
+    .auth-tab.active {
+      background: var(--card-bg);
+      color: var(--primary);
+      border-bottom: 2px solid var(--primary);
+    }
+
+    .auth-body {
+      padding: 2rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 0.65rem 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+    }
+
+    /* Dashboard Layout */
+    .grid {
+      display: grid;
+      gap: 1.5rem;
+    }
+
+    .grid-cols-3 {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Stats Overview */
+    .progress-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem 0;
+    }
+
+    .circular-progress {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: conic-gradient(var(--primary) 0deg, #e2e8f0 0deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+
+    .circular-progress::before {
+      content: '';
+      position: absolute;
+      width: 144px;
+      height: 144px;
+      border-radius: 50%;
+      background: var(--card-bg);
+    }
+
+    .progress-inner {
+      position: relative;
+      text-align: center;
+    }
+
+    .progress-val {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--primary-dark);
+    }
+
+    .progress-unit {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .stat-badges {
+      display: flex;
+      gap: 1rem;
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+
+    .stat-badge {
+      flex: 1;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+
+    .stat-badge-val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .stat-badge-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    /* Devices List */
+    .device-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+    }
+
+    .device-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #cbd5e1;
+    }
+    .status-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+    }
+
+    .token-box {
+      background: #f1f5f9;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      border: 1px dashed var(--border);
+      margin-top: 0.75rem;
+    }
+
+    /* Table */
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--text-muted);
+      background: #f8fafc;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-drink {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+
+    .badge-refill {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    /* Alerts / Toast */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #1e293b;
+      color: white;
+      padding: 0.85rem 1.5rem;
+      border-radius: 10px;
+      box-shadow: var(--shadow-lg);
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: none;
+      z-index: 100;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="nav-container">
+      <a href="/" class="brand">
+        <span class="brand-icon">🥤</span>
+        <span>Smart Water Tracker</span>
+      </a>
+      <div id="navUser" class="hidden">
+        <div class="user-pill">
+          <span id="navUserName">用戶</span>
+          <button class="btn btn-secondary btn-sm" onclick="logout()">登出</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main>
+    <!-- Auth Screen -->
+    <div id="authSection" class="auth-wrapper">
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabLoginBtn" onclick="switchAuthTab('login')">登入</div>
+        <div class="auth-tab" id="tabRegisterBtn" onclick="switchAuthTab('register')">註冊帳號</div>
+      </div>
+
+      <!-- Login Form -->
+      <div id="loginForm" class="auth-body">
+        <form onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label>電子郵件</label>
+            <input type="email" id="loginEmail" class="form-control" placeholder="name@example.com" required>
+          </div>
+          <div class="form-group">
+            <label>密碼</label>
+            <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">登入系統</button>
+        </form>
+      </div>
+
+      <!-- Register Form -->
+      <div id="registerForm" class="auth-body hidden">
+        <form onsubmit="handleRegister(event)">
+          <div class="form-group">
+            <label>顯示名稱 (選填)</label>
+            <input type="text" id="regName" class="form-control" placeholder="水水大師">
+          </div>
+          <div class="form-group">
+            <label>電子郵件</label>
+            <input type="email" id="regEmail" class="form-control" placeholder="name@example.com" required>
+          </div>
+          <div class="form-group">
+            <label>密碼 (至少 6 個字元)</label>
+            <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">建立帳號</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboardSection" class="hidden">
+      <div class="grid grid-cols-3">
+
+        <!-- Today Progress Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>💧 今日喝水進度</span>
+            <button class="btn btn-secondary btn-sm" onclick="editGoal()">修改目標</button>
+          </div>
+          <div class="progress-hero">
+            <div class="circular-progress" id="progressRing">
+              <div class="progress-inner">
+                <div class="progress-val" id="todayAmount">0</div>
+                <div class="progress-unit">/ <span id="dailyGoal">2000</span> ml</div>
+              </div>
+            </div>
+            <div class="stat-badges">
+              <div class="stat-badge">
+                <div class="stat-badge-val" id="drinkCount">0 次</div>
+                <div class="stat-badge-label">喝水次數</div>
+              </div>
+              <div class="stat-badge">
+                <div class="stat-badge-val" id="refillCount">0 次</div>
+                <div class="stat-badge-label">補水次數</div>
+              </div>
+              <div class="stat-badge">
+                <div class="stat-badge-val" id="progressPct">0%</div>
+                <div class="stat-badge-label">目標達成率</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Devices Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>📱 智慧水杯裝置</span>
+            <button class="btn btn-primary btn-sm" onclick="toggleBindModal()">+ 綁定裝置</button>
+          </div>
+
+          <div id="devicesList">
+            <p style="color: var(--text-muted); font-size: 0.9rem;">尚未綁定任何 ESP32 裝置</p>
+          </div>
+
+          <!-- Bind Form -->
+          <div id="bindModal" class="hidden" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+            <form onsubmit="handleBindDevice(event)">
+              <div class="form-group">
+                <label>裝置 ID (ESP32 MAC，例: water_a1b2c3d4)</label>
+                <input type="text" id="bindDeviceId" class="form-control" placeholder="water_xxxx" required>
+              </div>
+              <div class="form-group">
+                <label>目前硬體配對碼 (Claim Code，選填)</label>
+                <input type="text" id="bindClaimCode" class="form-control" placeholder="由 BLE 讀取的目前金鑰">
+              </div>
+              <div class="form-group">
+                <label>新硬體配對碼（僅轉讓時）</label>
+                <input type="text" id="bindNewClaimCode" class="form-control" placeholder="先在 BLE 輪替後讀取的新金鑰">
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.35rem 0 0;">轉讓前先透過 BLE 輪替金鑰，再同時填入目前與新金鑰。</p>
+              </div>
+              <div class="form-group">
+                <label>自訂水杯名稱</label>
+                <input type="text" id="bindDeviceName" class="form-control" placeholder="辦公桌上的水杯">
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button type="submit" class="btn btn-primary btn-sm" style="flex: 1;">確認綁定</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleBindModal()">取消</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Device Token Modal Display -->
+          <div id="tokenDisplay" class="hidden" style="margin-top: 1rem;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: var(--success);">🎉 綁定成功！裝置憑證 (Device Token)：</div>
+            <div class="token-box" id="tokenValue">dvt_...</div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+              請將此 Token 寫入 ESP32 裝置，或於 API Header 帶入 <code>Authorization: Bearer &lt;Token&gt;</code>。
+            </p>
+          </div>
+        </div>
+
+        <!-- Quick Simulator Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>🧪 模擬硬體上傳事件</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+            可在此直接模擬 ESP32-C3 透過 WiFi / API 回傳喝水或補水事件。
+          </p>
+          <form onsubmit="handleSimulateEvent(event)">
+            <div class="form-group">
+              <label>事件類型</label>
+              <select id="simType" class="form-control">
+                <option value="drink">🥤 喝水 (Drink)</option>
+                <option value="refill">🚰 補水 (Refill)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>變化水量 (ml)</label>
+              <input type="number" id="simAmount" class="form-control" value="250" min="1" max="2000" required>
+            </div>
+            <button type="submit" class="btn btn-secondary" style="width: 100%;">發送模擬事件</button>
+          </form>
+        </div>
+
+      </div>
+
+      <!-- Weekly Trends Chart Card -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <div class="card-title">
+          <span>📊 過去 7 日飲水趨勢</span>
+          <span style="font-size: 0.85rem; color: var(--text-muted);" id="weekSummaryText">週累計: 0 ml | 日均: 0 ml</span>
+        </div>
+        <div style="height: 260px;">
+          <canvas id="weeklyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Recent Records Table -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <div class="card-title">
+          <span>📜 最新喝水紀錄歷程</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadDashboard()">重新整理</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>時間 (台北時間)</th>
+                <th>事件類型</th>
+                <th>水量變化</th>
+                <th>裝置 ID</th>
+                <th>事件識別碼 (Event ID)</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted);">載入中...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">訊息提示</div>
+
+  <script>
+    const API_BASE = '/api/v1';
+    let token = localStorage.getItem('token');
+    let currentUser = null;
+    let chartInstance = null;
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+
+    function switchAuthTab(type) {
+      document.getElementById('tabLoginBtn').classList.toggle('active', type === 'login');
+      document.getElementById('tabRegisterBtn').classList.toggle('active', type === 'register');
+      document.getElementById('loginForm').classList.toggle('hidden', type !== 'login');
+      document.getElementById('registerForm').classList.toggle('hidden', type !== 'register');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '登入失敗');
+
+        token = data.token;
+        localStorage.setItem('token', token);
+        showToast('登入成功！');
+        checkAuth();
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const displayName = document.getElementById('regName').value;
+      const email = document.getElementById('regEmail').value;
+      const password = document.getElementById('regPassword').value;
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, displayName })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '註冊失敗');
+
+        token = data.token;
+        localStorage.setItem('token', token);
+        showToast('註冊成功！');
+        checkAuth();
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('token');
+      token = null;
+      currentUser = null;
+      document.getElementById('navUser').classList.add('hidden');
+      document.getElementById('dashboardSection').classList.add('hidden');
+      document.getElementById('authSection').classList.remove('hidden');
+      showToast('已登出');
+    }
+
+    async function checkAuth() {
+      if (!token) {
+        document.getElementById('authSection').classList.remove('hidden');
+        document.getElementById('dashboardSection').classList.add('hidden');
+        document.getElementById('navUser').classList.add('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/user/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Token expired');
+        const data = await res.json();
+        currentUser = data.user;
+
+        document.getElementById('authSection').classList.add('hidden');
+        document.getElementById('dashboardSection').classList.remove('hidden');
+        document.getElementById('navUser').classList.remove('hidden');
+        document.getElementById('navUserName').innerText = currentUser.displayName || currentUser.email;
+
+        loadDashboard();
+      } catch {
+        logout();
+      }
+    }
+
+    async function loadDashboard() {
+      await Promise.all([
+        loadDailyStats(),
+        loadDevices(),
+        loadWeeklyChart(),
+        loadRecords()
+      ]);
+    }
+
+    async function loadDailyStats() {
+      const res = await fetch(`${API_BASE}/water/stats/daily`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('todayAmount').innerText = data.totalMl;
+        document.getElementById('dailyGoal').innerText = data.goalMl;
+        document.getElementById('drinkCount').innerText = `${data.drinkCount} 次`;
+        document.getElementById('refillCount').innerText = `${data.refillCount} 次`;
+
+        const pct = Math.round((data.totalMl / data.goalMl) * 100);
+        document.getElementById('progressPct').innerText = `${pct}%`;
+
+        // Update progress ring
+        const deg = Math.min(Math.round((pct / 100) * 360), 360);
+        document.getElementById('progressRing').style.background =
+          `conic-gradient(var(--primary) ${deg}deg, #e2e8f0 ${deg}deg)`;
+      }
+    }
+
+    async function editGoal() {
+      const newGoal = prompt('請輸入每日喝水目標 (ml):', currentUser.dailyGoalMl || 2000);
+      if (newGoal && !isNaN(newGoal)) {
+        const goalNum = parseInt(newGoal, 10);
+        const res = await fetch(`${API_BASE}/user/me`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ dailyGoalMl: goalNum })
+        });
+        if (res.ok) {
+          showToast('每日目標已更新！');
+          loadDailyStats();
+          loadWeeklyChart();
+        }
+      }
+    }
+
+    async function loadDevices() {
+      const res = await fetch(`${API_BASE}/devices`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const container = document.getElementById('devicesList');
+        if (data.devices.length === 0) {
+          container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem;">尚未綁定任何 ESP32 裝置</p>`;
+          return;
+        }
+
+        container.innerHTML = data.devices.map(d => `
+          <div class="device-item">
+            <div class="device-info">
+              <div class="status-dot ${d.isOnline ? 'online' : ''}"></div>
+              <div>
+                <div style="font-weight: 700; font-size: 0.9rem;">${d.name || d.id}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">${d.id} • ${d.isOnline ? '🟢 連線中' : '⚪ 離線'} • 憑證: ${d.deviceToken || '****'}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.4rem;">
+              <button class="btn btn-secondary btn-sm" onclick="rotateToken('${d.id}')" title="重新產生憑證">重產憑證</button>
+              <button class="btn btn-danger btn-sm" onclick="unbindDevice('${d.id}')">解綁</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    async function rotateToken(id) {
+      if (!confirm(`確定要為裝置 ${id} 重新產生 Token 嗎？舊 Token 將立即失效！`)) return;
+      const res = await fetch(`${API_BASE}/devices/${id}/token/rotate`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        document.getElementById('tokenDisplay').classList.remove('hidden');
+        document.getElementById('tokenValue').innerText = data.deviceToken;
+        showToast('已重新產生 Device Token！');
+        loadDevices();
+      } else {
+        showToast(data.error || '重產失敗');
+      }
+    }
+
+    function toggleBindModal() {
+      const m = document.getElementById('bindModal');
+      m.classList.toggle('hidden');
+      document.getElementById('tokenDisplay').classList.add('hidden');
+    }
+
+    async function handleBindDevice(e) {
+      e.preventDefault();
+      const deviceId = document.getElementById('bindDeviceId').value;
+      const claimCode = document.getElementById('bindClaimCode').value.trim() || undefined;
+      const newClaimCode = document.getElementById('bindNewClaimCode').value.trim() || undefined;
+      const name = document.getElementById('bindDeviceName').value;
+
+      try {
+        const res = await fetch(`${API_BASE}/devices`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ deviceId, claimCode, newClaimCode, name })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '綁定失敗');
+
+        showToast('裝置綁定成功！');
+        document.getElementById('bindDeviceId').value = '';
+        document.getElementById('bindClaimCode').value = '';
+        document.getElementById('bindNewClaimCode').value = '';
+        document.getElementById('bindDeviceName').value = '';
+        toggleBindModal();
+
+        if (data.device.deviceToken) {
+          document.getElementById('tokenDisplay').classList.remove('hidden');
+          document.getElementById('tokenValue').innerText = data.device.deviceToken;
+        }
+
+        loadDevices();
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
+
+    async function unbindDevice(id) {
+      if (!confirm(`確定要解除綁定裝置 ${id} 嗎？`)) return;
+      const res = await fetch(`${API_BASE}/devices/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        showToast('已解除綁定');
+        loadDevices();
+      }
+    }
+
+    async function handleSimulateEvent(e) {
+      e.preventDefault();
+      const type = document.getElementById('simType').value;
+      const amountMl = parseInt(document.getElementById('simAmount').value, 10);
+      const eventId = `sim_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+      try {
+        const res = await fetch(`${API_BASE}/water/records`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            eventId,
+            type,
+            amountMl,
+            remainingMl: 300,
+            timeSynced: true
+          })
+        });
+        if (res.ok) {
+          showToast(`已送出模擬 ${type === 'drink' ? '喝水' : '補水'} 事件 +${amountMl}ml`);
+          loadDailyStats();
+          loadWeeklyChart();
+          loadRecords();
+        }
+      } catch (err) {
+        showToast('發送失敗');
+      }
+    }
+
+    async function loadWeeklyChart() {
+      const res = await fetch(`${API_BASE}/water/stats/weekly`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('weekSummaryText').innerText =
+          `週累計: ${data.totalWeekMl} ml | 日均: ${data.averageMl} ml | 達標: ${data.goalMetDays} / 7 天`;
+
+        const ctx = document.getElementById('weeklyChart').getContext('2d');
+        const labels = data.days.map(d => d.date.substring(5)); // MM-DD
+        const values = data.days.map(d => d.totalMl);
+
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: '喝水量 (ml)',
+              data: values,
+              backgroundColor: values.map(v => v >= data.goalMl ? '#10b981' : '#0284c7'),
+              borderRadius: 8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                suggestedMax: data.goalMl * 1.2
+              }
+            }
+          }
+        });
+      }
+    }
+
+    async function loadRecords() {
+      const res = await fetch(`${API_BASE}/water/records?limit=10`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const tbody = document.getElementById('recordsTableBody');
+        if (data.records.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">尚無任何紀錄</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = data.records.map(r => {
+          const date = new Date(r.occurredAt);
+          const timeStr = date.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+          const isDrink = r.eventType === 'drink';
+          return `
+            <tr>
+              <td>${timeStr}</td>
+              <td><span class="badge ${isDrink ? 'badge-drink' : 'badge-refill'}">${isDrink ? '🥤 喝水' : '🚰 補水'}</span></td>
+              <td style="font-weight: 700;">+${r.amountMl} ml</td>
+              <td>${r.deviceId || '-'}</td>
+              <td style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">${r.eventId || r.id.substring(0, 8)}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    // Init
+    checkAuth();
+  </script>
+</body>
+</html>
