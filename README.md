@@ -6,11 +6,21 @@
 
 ## 📁 Monorepo 專案結構
 
-本專案採用 Monorepo 結構管理韌體、後端與教學工作坊：
+本專案採用 Monorepo 結構管理韌體、後端、前端 App 與教學工作坊：
 
 ```
 smart-water-tracker/
 ├── package.json              # 根目錄 npm workspace 設定
+├── app/                      # 📱 React + TypeScript + Vite 前端/客戶端 App (支援 Web Bluetooth)
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   ├── src/
+│   │   ├── services/         # API 客戶端、BLE 協議通訊、離線同步佇列 (Offline Sync)
+│   │   ├── contexts/         # Auth, BLE, Water, Device 狀態管理
+│   │   ├── views/            # Dashboard, BLE 控制, 歷程, 統計, 裝置管理, 設定
+│   │   └── components/       # 導覽列與語意化功能元件
+│   └── tests/                # Vitest 單元測試
 ├── firmware/                 # 🔌 ESP32-C3 稱重感測韌體 (PlatformIO)
 │   ├── platformio.ini
 │   ├── include/
@@ -33,7 +43,20 @@ smart-water-tracker/
 
 ## ⚡ 快速開始
 
-### 1. 後端服務 (Backend)
+### 1. 前端客戶端 (App)
+
+```bash
+# 啟動前端開發伺服器 (預設 Port 5173，自動代理 /api 至後端)
+npm run app:dev
+
+# 執行前端自動化測試
+npm run app:test
+
+# 進行生產環境打包
+npm run app:build
+```
+
+### 2. 後端服務 (Backend)
 
 切換至 `backend` 目錄或在根目錄使用 npm scripts：
 
@@ -83,6 +106,52 @@ pio device monitor
 | **黑色 (Black)** | **E-** | 激勵負極 (Excitation -) |
 | **白色 (White)** | **A-** | 訊號負極 (Signal -) |
 | **綠色 (Green)** | **A+** | 訊號正極 (Signal +) |
+
+---
+
+## 📶 網路配網與雲端直傳 (WiFi & Cloud Upload)
+
+> **⚠️ 預設為 BLE-only 模式，本節功能目前停用。**
+>
+> `Config.h` 的 `WATER_BLE_ONLY` 預設為 `1`：不啟動配網熱點、不做裝置端雲端直傳，
+> Wi-Fi 完全不初始化，單一 2.4GHz radio 全部留給 BLE。資料由手機透過 BLE 取走後，
+> 再由手機呼叫後端 API。
+>
+> 這是因為 ESP32-C3 只支援 2.4GHz 且僅支援一般密碼制 (WPA2 Personal)，
+> 無法加入 WPA2 Enterprise 企業網路。若有 2.4GHz + 一般密碼的網路可用，
+> 把 `WATER_BLE_ONLY` 設為 `0` 即可啟用本節所有功能。
+
+ESP32-C3 支援 **BLE 輔助配網** 與 **WiFi 獨立雲端直傳**：
+
+### 1. BLE 配網指令
+透過 BLE `COMMAND_UUID` 發送 JSON 指令：
+* **配網與配置雲端**：
+  ```json
+  {
+    "action": "configure_wifi",
+    "ssid": "Home_WiFi_2.4G",
+    "password": "wifi_password",
+    "apiBaseUrl": "http://192.168.1.100:3000",
+    "deviceToken": "dvt_abcdef123456..."
+  }
+  ```
+* **清除 WiFi 設定**：
+  ```json
+  {"action": "clear_wifi"}
+  ```
+
+### 2. Serial 診斷指令
+
+| 指令 | 說明 |
+| :--- | :--- |
+| `WIFI:STATUS` | 顯示目前 WiFi 連線、IP、訊號強度與離線待傳佇列長度 |
+| `WIFI:CLEAR` | 清除 NVS 中儲存的 WiFi 設定與離線佇列 |
+| `WIFI:SET:<ssid>,<pass>,<url>,<token>` | 透過序列埠直接配置 WiFi 與雲端資訊 |
+| `TARE` | 去皮歸零 |
+| `CAL:<克數>` | 以已知重量校準，例如 `CAL:500` |
+| `RAW` | 顯示 HX711 狀態與原始 24-bit ADC 讀數 |
+| `STATUS` | 顯示重量、狀態機、今日總計與系統時間 |
+| `RESET` | 重設今日累計飲水量 |
 
 ---
 
