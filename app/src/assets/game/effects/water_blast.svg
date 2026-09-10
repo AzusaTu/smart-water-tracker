@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" role="img" aria-labelledby="title desc">
+  <title id="title">水流攻擊特效</title><desc id="desc">向右噴射的藍色水流，透明背景</desc>
+  <defs>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#d8fbff"/><stop offset=".35" stop-color="#63dcff"/><stop offset="1" stop-color="#1687ec"/></linearGradient>
+  </defs>
+  <path d="M31 126c87-59 177-78 278-58 91 18 156 9 245-35-31 38-31 58 17 67-33 13-55 29-70 50 34 7 59 22 75 45-103-39-186-43-278-13-96 31-178 6-267-56Z" fill="url(#beam)" stroke="#1769b3" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M85 123c89-28 174-31 254-9 63 17 114 13 163-8" fill="none" stroke="#eefeff" stroke-width="18" stroke-linecap="round" opacity=".8"/>
+  <g fill="#73dfff" stroke="#1769b3" stroke-width="5">
+    <path d="M535 36c12 19 29 35 29 54 0 16-12 28-29 28s-29-12-29-28c0-19 17-35 29-54Z"/>
+    <circle cx="597" cy="71" r="13"/><circle cx="567" cy="202" r="9"/><circle cx="119" cy="55" r="11"/>
+  </g>
+</svg>
