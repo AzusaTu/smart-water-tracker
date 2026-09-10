@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">水能量圖示</title><desc id="desc">帶能量核心的藍色水滴，透明背景</desc>
+  <defs><linearGradient id="drop" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#9ef4ff"/><stop offset="1" stop-color="#2389ed"/></linearGradient><radialGradient id="core"><stop stop-color="#ffffff"/><stop offset=".45" stop-color="#8cecff"/><stop offset="1" stop-color="#2cb4ff" stop-opacity=".2"/></radialGradient></defs>
+  <path d="M128 25C98 83 57 119 57 166c0 43 31 72 71 72s71-29 71-72c0-47-41-83-71-141Z" fill="url(#drop)" stroke="#145a9e" stroke-width="11"/>
+  <circle cx="128" cy="164" r="42" fill="url(#core)" stroke="#dffcff" stroke-width="7"/>
+  <path d="M128 123l10 26 27 10-27 10-10 27-10-27-27-10 27-10Z" fill="#fff"/>
+  <path d="M91 104c9-17 20-31 34-43" fill="none" stroke="#e6fdff" stroke-width="12" stroke-linecap="round" opacity=".75"/>
+</svg>
