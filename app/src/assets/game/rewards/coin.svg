@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">獎勵金幣</title><desc id="desc">遊戲獎勵用金幣，透明背景</desc>
+  <defs><radialGradient id="gold" cx="36%" cy="28%"><stop stop-color="#fff2a0"/><stop offset=".42" stop-color="#ffd34d"/><stop offset="1" stop-color="#e89b19"/></radialGradient></defs>
+  <circle cx="128" cy="128" r="99" fill="url(#gold)" stroke="#a86312" stroke-width="12"/>
+  <circle cx="128" cy="128" r="72" fill="none" stroke="#f8b627" stroke-width="10"/>
+  <path d="M128 72l17 35 39 6-28 27 7 39-35-18-35 18 7-39-28-27 39-6Z" fill="#fff0
+72" stroke="#a86312" stroke-width="7" stroke-linejoin="round"/>
+  <ellipse cx="92" cy="69" rx="22" ry="10" fill="#fffbd1" opacity=".75" transform="rotate(-28 92 69)"/>
+</svg>
