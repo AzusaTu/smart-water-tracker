@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">玩家水系攻擊姿勢</title><desc id="desc">少年冒險者揮動水系武器，透明背景</desc>
+  <defs>
+    <linearGradient id="coat" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5bc8ff"/><stop offset="1" stop-color="#2368c5"/></linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c9f7ff"/><stop offset=".45" stop-color="#44c8ff"/><stop offset="1" stop-color="#1475df"/></linearGradient>
+  </defs>
+  <g stroke="#12345c" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="211" cy="146" r="61" fill="#ffd9b8"/>
+    <path fill="#4b2e2a" d="M154 140c-8-58 38-94 87-78 27 9 43 31 42 57-18-9-38-13-59-11-14 1-27 5-39 12-6-12-16-18-31-18Z"/>
+    <path fill="url(#coat)" d="M163 209c38-16 78-10 110 16 29 23 48 63 55 117l-95 43-108-37c5-61 17-107 38-139Z"/>
+    <path fill="#d8a66a" d="M164 266c-30 25-50 55-59 91l50 18 35-74Z"/>
+    <path fill="#d8a66a" d="M268 265c35 6 70 22 103 47l-26 45-91-51Z"/>
+    <path fill="#36455f" d="M168 355l-42 88 57 8 52-78Z"/>
+    <path fill="#36455f" d="M245 369l31 84 59-17-33-93Z"/>
+    <path fill="#ffd9b8" d="M340 302c14-8 30-3 36 11 6 13 1 28-12 35l-23 11-24-38Z"/>
+    <path d="M349 314 436 223" fill="none" stroke="#d9f6ff" stroke-width="18"/>
+    <path d="M350 314 436 223" fill="none" stroke="#218fe7" stroke-width="8"/>
+    <path fill="url(#water)" d="M423 219c9-36 33-61 71-75-4 36-1 59 11 84-31-11-56-14-82-9Z"/>
+    <circle cx="192" cy="149" r="6" fill="#18314e" stroke="none"/><circle cx="237" cy="149" r="6" fill="#18314e" stroke="none"/>
+    <path d="M204 177c12 8 24 8 35 0" fill="none" stroke-width="7"/>
+  </g>
+</svg>
