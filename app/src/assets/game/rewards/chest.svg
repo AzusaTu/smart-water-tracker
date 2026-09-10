@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 420" role="img" aria-labelledby="title desc">
+  <title id="title">獎勵寶箱</title><desc id="desc">金色與木質的卡通獎勵寶箱，透明背景</desc>
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d98b38"/><stop offset="1" stop-color="#8b4c22"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff08b"/><stop offset=".45" stop-color="#ffc43d"/><stop offset="1" stop-color="#d98715"/></linearGradient>
+  </defs>
+  <g stroke="#5a341e" stroke-width="12" stroke-linejoin="round">
+    <path d="M78 188c0-81 55-130 178-130s178 49 178 130Z" fill="url(#wood)"/>
+    <path d="M64 184h384v180c0 19-15 34-34 34H98c-19 0-34-15-34-34Z" fill="url(#wood)"/>
+    <path d="M64 184h384v54H64Z" fill="#6e3b20"/>
+    <path d="M118 77v321M394 77v321" stroke="url(#gold)" stroke-width="22"/>
+    <path d="M238 172h76v116h-76Z" fill="url(#gold)"/>
+    <circle cx="276" cy="225" r="14" fill="#704018" stroke-width="7"/>
+    <path d="M276 239v24" fill="none" stroke="#704018" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <g fill="#fff3a1"><path d="M68 80l8 20 20 8-20 8-8 20-8-20-20-8 20-8Z"/><path d="M446 106l6 15 15 6-15 6-6 15-6-15-15-6 15-6Z"/></g>
+</svg>
