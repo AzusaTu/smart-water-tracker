@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">水滴吉祥物</title><desc id="desc">可愛的藍色水滴角色，透明背景</desc>
+  <defs><linearGradient id="drop" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#a8f3ff"/><stop offset=".5" stop-color="#4bcaff"/><stop offset="1" stop-color="#2281e5"/></linearGradient></defs>
+  <g stroke="#10447c" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="url(#drop)" d="M256 52c-34 72-126 161-126 261 0 77 56 135 126 135s126-58 126-135C382 213 290 124 256 52Z"/>
+    <path d="M178 324c-25 16-43 35-55 57" fill="none"/>
+    <path d="M334 324c25 16 43 35 55 57" fill="none"/>
+    <circle cx="218" cy="292" r="11" fill="#0c3159" stroke="none"/><circle cx="294" cy="292" r="11" fill="#0c3159" stroke="none"/>
+    <path d="M224 335c22 21 43 21 65 0" fill="none"/>
+  </g>
+  <ellipse cx="197" cy="325" rx="23" ry="13" fill="#ff93b3" opacity=".65"/>
+  <ellipse cx="315" cy="325" rx="23" ry="13" fill="#ff93b3" opacity=".65"/>
+  <path d="M202 160c15-29 38-50 69-63" fill="none" stroke="#e8fdff" stroke-width="18" stroke-linecap="round" opacity=".65"/>
+  <g fill="#ffe060"><path d="M104 160l9 22 22 9-22 9-9 22-9-22-22-9 22-9Z"/><path d="M405 213l7 17 17 7-17 7-7 17-7-17-17-7 17-7Z"/></g>
+</svg>
