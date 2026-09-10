@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GAME_CONFIG, GAME_STATE_SCHEMA_VERSION } from '../src/game/gameConfig';
-import { createDailyGameState } from '../src/game/gameRules';
+import { attackBoss, canAttack, claimReward, createDailyGameState } from '../src/game/gameRules';
 import { GameStateStore } from '../src/game/gameStateStore';
 
 class MemoryStorage implements Storage {
@@ -41,8 +41,8 @@ describe('GameStateStore', () => {
       chests: 2,
       streakDays: 4,
       waterEnergy: 700,
-      bossHp: 0,
-      bossDefeated: true,
+      bossHp: current.bossMaxHp - 120,
+      bossDefeated: false,
     };
     storage.setItem('water_game_state:user-a', JSON.stringify(legacy));
 
@@ -76,6 +76,55 @@ describe('GameStateStore', () => {
     expect(migrated?.bossHp).toBe(migrated?.bossMaxHp);
     expect(migrated?.points).toBe(600);
     expect(migrated?.chests).toBe(3);
+  });
+
+  it('preserves completed and claimed state across a config migration', () => {
+    let defeated = createDailyGameState('2026-09-10', 2000);
+    defeated = {
+      ...defeated,
+      waterMl: 2000,
+      waterEnergy: 800,
+      energyEarned: 800,
+    };
+    while (canAttack(defeated).ok) defeated = attackBoss(defeated).state;
+    const claimed = claimReward(defeated).state;
+    storage.setItem(
+      'water_game_state:user-a',
+      JSON.stringify({ ...claimed, configVersion: GAME_CONFIG.configVersion + 1 }),
+    );
+
+    const migrated = store.load('user-a');
+    expect(migrated?.bossDefeated).toBe(true);
+    expect(migrated?.rewardClaimed).toBe(true);
+    expect(migrated?.streakDays).toBe(claimed.streakDays);
+    expect(claimReward(migrated!).reward).toBeNull();
+    expect(claimReward(migrated!).state.points).toBe(claimed.points);
+  });
+
+  it('keeps an unclaimed completed reward claimable exactly once after migration', () => {
+    let defeated = createDailyGameState('2026-09-10', 2000);
+    defeated = {
+      ...defeated,
+      waterMl: 2000,
+      waterEnergy: 800,
+      energyEarned: 800,
+    };
+    while (canAttack(defeated).ok) defeated = attackBoss(defeated).state;
+    storage.setItem(
+      'water_game_state:user-a',
+      JSON.stringify({ ...defeated, configVersion: GAME_CONFIG.configVersion + 1 }),
+    );
+
+    const migrated = store.load('user-a');
+    expect(migrated?.bossDefeated).toBe(true);
+    expect(migrated?.rewardClaimed).toBe(false);
+    const firstClaim = claimReward(migrated!);
+    expect(firstClaim.reward).toEqual({
+      points: GAME_CONFIG.defeatRewardPoints,
+      chests: GAME_CONFIG.defeatRewardChests,
+    });
+    expect(firstClaim.state.streakDays).toBe(migrated?.streakDays);
+    expect(claimReward(firstClaim.state).reward).toBeNull();
   });
 
   it('does not guess how to load a future schema version', () => {

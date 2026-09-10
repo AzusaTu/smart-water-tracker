@@ -69,12 +69,25 @@ const canMigrateState = (value: unknown): value is Record<string, unknown> => {
   return schemaVersion === undefined || schemaVersion === 0 || schemaVersion === GAME_STATE_SCHEMA_VERSION;
 };
 
-const migrateState = (value: Record<string, unknown>): DailyGameState =>
-  createDailyGameState(value.date as string, value.dailyGoalMl as number, {
+const migrateState = (value: Record<string, unknown>): DailyGameState => {
+  const migrated = createDailyGameState(value.date as string, value.dailyGoalMl as number, {
     points: value.points as number,
     chests: value.chests as number,
     streakDays: value.streakDays as number,
   });
+
+  // Balance-dependent fields are rebuilt from the current config, but daily
+  // completion is authoritative for reward idempotency and must survive a
+  // config migration. The hook will resync hydration energy after this load.
+  if (value.bossDefeated !== true) return migrated;
+
+  return {
+    ...migrated,
+    bossHp: 0,
+    bossDefeated: true,
+    rewardClaimed: value.rewardClaimed === true,
+  };
+};
 
 /**
  * Persists the daily battle per user so a tab switch or reload keeps today's
