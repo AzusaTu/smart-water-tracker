@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">深海巨鯨 Boss</title>
+  <desc id="desc">藍色卡通鯨魚 Boss，透明背景</desc>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6edcff"/>
+      <stop offset="0.55" stop-color="#3594dd"/>
+      <stop offset="1" stop-color="#15569f"/>
+    </linearGradient>
+    <linearGradient id="belly" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9fbff"/>
+      <stop offset="1" stop-color="#9ddcf0"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#0b3566" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="url(#body)" d="M87 272c0-89 75-151 181-151 57 0 101 14 137 43 25-9 48-28 64-52 9 39 2 70-23 94 23 20 37 45 42 74-31-18-58-25-83-24-25 67-90 113-169 113-86 0-149-35-149-97Z"/>
+    <path fill="url(#belly)" d="M101 286c23 45 77 70 145 70 64 0 112-26 142-75-56 17-109 24-158 20-52-4-96-17-129-15Z"/>
+    <path fill="#3aa9e9" d="M199 128c7-31 27-54 56-68-2 30 9 50 31 62-32 1-61 3-87 6Z"/>
+    <path fill="#2d82c7" d="M105 286c-31-5-56-21-74-47 35-2 60 8 78 29"/>
+    <path fill="#2d82c7" d="M264 358c-3 31-21 55-52 72 3-34-6-57-26-70"/>
+    <circle cx="324" cy="211" r="12" fill="#071d38" stroke="none"/>
+    <path d="M347 251c-14 13-32 13-48 1" fill="none"/>
+    <path d="M292 189c13-12 28-15 44-8" fill="none"/>
+    <path d="M379 171c5-24 20-40 42-49" fill="none"/>
+  </g>
+  <g fill="#8fe8ff" opacity=".9">
+    <circle cx="420" cy="86" r="13"/>
+    <circle cx="449" cy="58" r="7"/>
+    <circle cx="71" cy="165" r="10"/>
+  </g>
+</svg>
