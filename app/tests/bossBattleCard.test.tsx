@@ -96,11 +96,31 @@ describe('BossBattleCard', () => {
       '今日目標已達成',
     );
   });
+
+  it('explains when deleted records cannot produce more energy', () => {
+    const credited = withWater(2000);
+    const deleted = {
+      ...credited,
+      waterMl: 200,
+      waterEnergy: 0,
+      bossHp: credited.bossMaxHp,
+      bossDefeated: false,
+    };
+    expect(getAttackHint(deleted, canAttack(deleted), 0, getWaterMlForNextAttack(deleted))).toContain(
+      '目前已無可累積的水能量',
+    );
+  });
 });
 
 describe('getDrinkSuccessMessage', () => {
   it('reports the energy gained or the cap', () => {
-    expect(getDrinkSuccessMessage(300, 120)).toBe('+300 ml，獲得 120 水能量');
-    expect(getDrinkSuccessMessage(300, 0)).toBe('已記錄 300 ml，今日目標已達成，不再累積水能量');
+    expect(getDrinkSuccessMessage(300, 120, 300, 2000)).toBe('+300 ml，獲得 120 水能量');
+    expect(getDrinkSuccessMessage(300, 0, 2000, 2000)).toBe(
+      '已記錄 300 ml，今日目標已達成，不再累積水能量',
+    );
+  });
+
+  it('does not call a high-water-mark no-op a completed goal', () => {
+    expect(getDrinkSuccessMessage(300, 0, 800, 2000)).toBe('已記錄 300 ml，目前未新增水能量');
   });
 });

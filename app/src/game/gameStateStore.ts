@@ -1,4 +1,5 @@
-import { DailyGameState } from './gameRules';
+import { GAME_CONFIG, GAME_STATE_SCHEMA_VERSION } from './gameConfig';
+import { createDailyGameState, DailyGameState } from './gameRules';
 
 const STORAGE_PREFIX = 'water_game_state:';
 
@@ -18,7 +19,7 @@ const defaultStorageResolver: StorageResolver = () => {
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-const isValidState = (value: unknown): value is DailyGameState => {
+const isStateShape = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
 
@@ -50,6 +51,31 @@ const isValidState = (value: unknown): value is DailyGameState => {
   return true;
 };
 
+const isValidState = (value: unknown): value is DailyGameState => {
+  if (!isStateShape(value)) return false;
+  return (
+    value.schemaVersion === GAME_STATE_SCHEMA_VERSION &&
+    value.configVersion === GAME_CONFIG.configVersion &&
+    value.bossId === GAME_CONFIG.bossId
+  );
+};
+
+const canMigrateState = (value: unknown): value is Record<string, unknown> => {
+  if (!isStateShape(value)) return false;
+
+  // Missing/zero schema versions are the pre-versioned format introduced by
+  // the first MVP. Future schema versions are intentionally not guessed at.
+  const schemaVersion = value.schemaVersion;
+  return schemaVersion === undefined || schemaVersion === 0 || schemaVersion === GAME_STATE_SCHEMA_VERSION;
+};
+
+const migrateState = (value: Record<string, unknown>): DailyGameState =>
+  createDailyGameState(value.date as string, value.dailyGoalMl as number, {
+    points: value.points as number,
+    chests: value.chests as number,
+    streakDays: value.streakDays as number,
+  });
+
 /**
  * Persists the daily battle per user so a tab switch or reload keeps today's
  * boss progress. Hydration data is never stored here; only derived game state.
@@ -70,7 +96,16 @@ export class GameStateStore {
       const raw = storage.getItem(this.key(userId));
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
-      return isValidState(parsed) ? parsed : null;
+      if (isValidState(parsed)) return parsed;
+      if (!canMigrateState(parsed)) return null;
+
+      const migrated = migrateState(parsed);
+      try {
+        storage.setItem(this.key(userId), JSON.stringify(migrated));
+      } catch {
+        // A storage write failure must not interrupt loading the game.
+      }
+      return migrated;
     } catch {
       return null;
     }

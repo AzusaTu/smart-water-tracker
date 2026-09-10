@@ -6,6 +6,8 @@
  * balance pass only touches this file.
  */
 export interface GameConfig {
+  /** Version of the balance values used to derive a daily battle state. */
+  configVersion: number;
   /** Water energy granted per millilitre of *effective* water (每 250 ml → +100). */
   energyPerMl: number;
   /** Energy spent by one attack. */
@@ -30,7 +32,11 @@ export interface GameConfig {
   bossLevel: number;
 }
 
+/** Version of the persisted game-state shape in localStorage. */
+export const GAME_STATE_SCHEMA_VERSION = 1;
+
 export const GAME_CONFIG: GameConfig = {
+  configVersion: 1,
   energyPerMl: 100 / 250,
   attackEnergyCost: 100,
   attackDamage: 120,

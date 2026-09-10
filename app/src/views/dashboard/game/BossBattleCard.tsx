@@ -18,7 +18,7 @@ export interface BossBattleCardProps {
   state: DailyGameState;
   attackCheck: AttackCheck;
   attacksAvailable: number;
-  waterMlForNextAttack: number;
+  waterMlForNextAttack: number | null;
   lastAttack: AttackFeedback | null;
   lastEnergyGain: EnergyFeedback | null;
   lastReward: RewardGrant | null;
@@ -34,12 +34,15 @@ export const getAttackHint = (
   state: DailyGameState,
   attackCheck: AttackCheck,
   attacksAvailable: number,
-  waterMlForNextAttack: number,
+  waterMlForNextAttack: number | null,
 ): string => {
   if (attackCheck.reason === 'boss-defeated') return '今天的 Boss 已被擊敗，明天再戰！';
   if (attackCheck.reason === 'not-enough-energy') {
     if (state.waterMl >= state.dailyGoalMl && state.dailyGoalMl > 0) {
       return '今日目標已達成，能量不再累積；剩餘能量不足以再攻擊。';
+    }
+    if (waterMlForNextAttack === null) {
+      return '目前已無可累積的水能量；刪除紀錄不會重新轉換已獲得的能量。';
     }
     return `再喝 ${numberFormatter.format(waterMlForNextAttack)} ml 就能攻擊一次`;
   }

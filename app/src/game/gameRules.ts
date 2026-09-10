@@ -1,4 +1,8 @@
-import { GAME_CONFIG, GameConfig } from './gameConfig';
+import {
+  GAME_CONFIG,
+  GAME_STATE_SCHEMA_VERSION,
+  GameConfig,
+} from './gameConfig';
 
 /**
  * Daily battle state. Hydration totals (`waterMl`, `dailyGoalMl`) are mirrored
@@ -6,6 +10,8 @@ import { GAME_CONFIG, GameConfig } from './gameConfig';
  * game only derives energy from them and never writes hydration data.
  */
 export interface DailyGameState {
+  schemaVersion: number;
+  configVersion: number;
   /** YYYY-MM-DD (Taipei date reported by the hydration stats). */
   date: string;
   waterMl: number;
@@ -86,7 +92,7 @@ export const getBossMaxHp = (dailyGoalMl: number, config: GameConfig = GAME_CONF
   const attacksAtGoal = Math.floor(
     getEnergyForWater(dailyGoalMl, dailyGoalMl, config) / config.attackEnergyCost,
   );
-  const attacksToDefeat = Math.max(1, Math.floor(attacksAtGoal * config.bossHpGoalRatio));
+  const attacksToDefeat = Math.max(1, Math.ceil(attacksAtGoal * config.bossHpGoalRatio));
   return attacksToDefeat * config.attackDamage;
 };
 
@@ -104,6 +110,8 @@ export const createDailyGameState = (
 ): DailyGameState => {
   const bossMaxHp = getBossMaxHp(dailyGoalMl, config);
   return {
+    schemaVersion: GAME_STATE_SCHEMA_VERSION,
+    configVersion: config.configVersion,
     date,
     waterMl: 0,
     dailyGoalMl: clampNonNegative(dailyGoalMl),
@@ -120,6 +128,45 @@ export const createDailyGameState = (
   };
 };
 
+interface BossState {
+  bossHp: number;
+  bossMaxHp: number;
+  bossDefeated: boolean;
+  streakDays: number;
+}
+
+/**
+ * Rebase the daily boss when the user changes their goal without taking away
+ * damage already dealt. A completed battle remains completed, so changing the
+ * goal cannot resurrect a defeated boss or make its reward available twice.
+ */
+const rebaseBossForGoal = (
+  state: DailyGameState,
+  dailyGoalMl: number,
+  config: GameConfig,
+): BossState => {
+  const bossMaxHp = getBossMaxHp(dailyGoalMl, config);
+  if (state.bossDefeated) {
+    return {
+      bossHp: 0,
+      bossMaxHp,
+      bossDefeated: true,
+      streakDays: state.streakDays,
+    };
+  }
+
+  const damageTaken = Math.max(0, state.bossMaxHp - state.bossHp);
+  const bossHp = Math.max(0, bossMaxHp - damageTaken);
+  const bossDefeated = bossHp === 0;
+
+  return {
+    bossHp,
+    bossMaxHp,
+    bossDefeated,
+    streakDays: bossDefeated ? state.streakDays + 1 : state.streakDays,
+  };
+};
+
 /**
  * Mirror the authoritative hydration total into the game and credit only the
  * increment that has not yet been converted. Returns the same object when
@@ -132,13 +179,22 @@ export const syncHydration = (
 ): SyncResult => {
   const waterMl = clampNonNegative(hydration.waterMl);
   const dailyGoalMl = clampNonNegative(hydration.dailyGoalMl);
+  const goalChanged = dailyGoalMl !== state.dailyGoalMl;
   const earnedNow = getEnergyForWater(waterMl, dailyGoalMl, config);
   const energyGained = Math.max(0, earnedNow - state.energyEarned);
+  const boss = goalChanged
+    ? rebaseBossForGoal(state, dailyGoalMl, config)
+    : {
+        bossHp: state.bossHp,
+        bossMaxHp: state.bossMaxHp,
+        bossDefeated: state.bossDefeated,
+        streakDays: state.streakDays,
+      };
 
   if (
     energyGained === 0 &&
     waterMl === state.waterMl &&
-    dailyGoalMl === state.dailyGoalMl
+    !goalChanged
   ) {
     return { state, energyGained: 0 };
   }
@@ -148,6 +204,10 @@ export const syncHydration = (
       ...state,
       waterMl,
       dailyGoalMl,
+      bossHp: boss.bossHp,
+      bossMaxHp: boss.bossMaxHp,
+      bossDefeated: boss.bossDefeated,
+      streakDays: boss.streakDays,
       energyEarned: state.energyEarned + energyGained,
       waterEnergy: state.waterEnergy + energyGained,
     },
@@ -169,10 +229,18 @@ export const previewEnergyGain = (
 export const getWaterMlForNextAttack = (
   state: DailyGameState,
   config: GameConfig = GAME_CONFIG,
-): number => {
+): number | null => {
   const missingEnergy = config.attackEnergyCost - state.waterEnergy;
   if (missingEnergy <= 0 || config.energyPerMl <= 0) return 0;
-  return Math.ceil(missingEnergy / config.energyPerMl);
+
+  const maxEnergy = getEnergyForWater(state.dailyGoalMl, state.dailyGoalMl, config);
+  const targetEnergy = state.energyEarned + missingEnergy;
+  if (state.dailyGoalMl <= 0 || targetEnergy > maxEnergy) return null;
+
+  const targetWaterMl = Math.ceil(targetEnergy / config.energyPerMl);
+  if (targetWaterMl > state.dailyGoalMl) return null;
+
+  return Math.max(0, targetWaterMl - clampNonNegative(state.waterMl));
 };
 
 export const getAttacksAvailable = (

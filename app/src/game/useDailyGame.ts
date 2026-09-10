@@ -33,7 +33,7 @@ export interface DailyGame {
   state: DailyGameState | null;
   attackCheck: AttackCheck;
   attacksAvailable: number;
-  waterMlForNextAttack: number;
+  waterMlForNextAttack: number | null;
   lastAttack: AttackFeedback | null;
   lastEnergyGain: EnergyFeedback | null;
   lastReward: RewardGrant | null;

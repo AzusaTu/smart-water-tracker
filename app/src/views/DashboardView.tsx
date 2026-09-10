@@ -28,9 +28,17 @@ interface DashboardViewProps {
   onNavigate: (tab: ActiveTab) => void;
 }
 
-export const getDrinkSuccessMessage = (amountMl: number, energyGained: number): string => {
+export const getDrinkSuccessMessage = (
+  amountMl: number,
+  energyGained: number,
+  waterMl: number,
+  dailyGoalMl: number,
+): string => {
   if (energyGained > 0) return `+${amountMl} ml，獲得 ${energyGained} 水能量`;
-  return `已記錄 ${amountMl} ml，今日目標已達成，不再累積水能量`;
+  if (dailyGoalMl > 0 && waterMl >= dailyGoalMl) {
+    return `已記錄 ${amountMl} ml，今日目標已達成，不再累積水能量`;
+  }
+  return `已記錄 ${amountMl} ml，目前未新增水能量`;
 };
 
 const formatDashboardDate = (now: Date): string =>
@@ -86,6 +94,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const handleQuickLog = async (amount: number) => {
     const pendingBefore = offlineQueue.getCount();
     const energyPreview = game.previewEnergy(amount);
+    const waterMlAfterLog = totalMl + amount;
     setBusyAmount(amount);
     try {
       await logWaterRecord(buildDrinkPayload(amount));
@@ -94,7 +103,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       showToast(
         queuedOffline
           ? `已暫存 ${amount} ml，連線後會自動同步`
-          : getDrinkSuccessMessage(amount, energyPreview),
+          : getDrinkSuccessMessage(amount, energyPreview, waterMlAfterLog, goalMl),
         queuedOffline ? 'info' : 'success',
       );
       if (successTimerRef.current !== null) {

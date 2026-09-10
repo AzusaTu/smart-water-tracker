@@ -96,17 +96,91 @@ describe('gameRules: water → energy', () => {
     expect(getWaterMlForNextAttack(drink(day(), 150))).toBe(100);
     expect(getWaterMlForNextAttack(drink(day(), 250))).toBe(0);
   });
+
+  it('includes the high-water mark after hydration records are deleted', () => {
+    let state = drink(day(), 1000);
+    for (let i = 0; i < 4; i += 1) state = attackBoss(state).state;
+
+    const deleted = syncHydration(state, { waterMl: 200, dailyGoalMl: GOAL }).state;
+    expect(deleted.energyEarned).toBe(400);
+    expect(deleted.waterEnergy).toBe(0);
+    expect(getWaterMlForNextAttack(deleted)).toBe(1050);
+  });
+
+  it('reports when the high-water mark has exhausted the daily energy cap', () => {
+    const credited = drink(day(), GOAL);
+    const deleted = {
+      ...credited,
+      waterMl: 200,
+      waterEnergy: 0,
+      bossHp: credited.bossMaxHp,
+      bossDefeated: false,
+    };
+    expect(getWaterMlForNextAttack(deleted)).toBeNull();
+  });
 });
 
 describe('gameRules: boss & attacks', () => {
-  it('scales boss HP with the daily goal so the boss falls near the goal', () => {
-    const maxHp = getBossMaxHp(GOAL);
-    const attacksAtGoal = Math.floor(getEnergyForWater(GOAL, GOAL) / GAME_CONFIG.attackEnergyCost);
-    expect(maxHp).toBeGreaterThan(0);
+  it.each([
+    [500, 2, 240],
+    [1000, 4, 480],
+    [2000, 8, 960],
+    [3000, 12, 1320],
+  ])('uses a whole number of attacks near the daily goal (%i ml)', (goalMl, attacksAtGoal, expectedHp) => {
+    const maxHp = getBossMaxHp(goalMl);
+    expect(maxHp).toBe(expectedHp);
+    expect(maxHp).toBe(Math.ceil(attacksAtGoal * GAME_CONFIG.bossHpGoalRatio) * GAME_CONFIG.attackDamage);
     expect(maxHp % GAME_CONFIG.attackDamage).toBe(0);
     expect(maxHp).toBeLessThanOrEqual(attacksAtGoal * GAME_CONFIG.attackDamage);
-    expect(maxHp).toBeGreaterThanOrEqual(attacksAtGoal * GAME_CONFIG.attackDamage * 0.75);
+  });
+
+  it('keeps a defensive one-attack fallback for an invalid zero goal', () => {
     expect(getBossMaxHp(0)).toBe(GAME_CONFIG.attackDamage);
+  });
+
+  it('rebalances same-day goal changes without taking away damage', () => {
+    let state = drink(day('2026-09-10', 3000), 3000);
+    state = attackBoss(state).state;
+    const loweredGoal = syncHydration(state, {
+      waterMl: 3000,
+      dailyGoalMl: 500,
+    });
+
+    expect(loweredGoal.state.dailyGoalMl).toBe(500);
+    expect(loweredGoal.state.bossMaxHp).toBe(getBossMaxHp(500));
+    expect(loweredGoal.state.bossHp).toBe(120);
+    expect(loweredGoal.state.bossDefeated).toBe(false);
+    expect(loweredGoal.state.streakDays).toBe(0);
+
+    state = attackBoss(state).state;
+    const defeatedByLowerGoal = syncHydration(state, {
+      waterMl: 3000,
+      dailyGoalMl: 500,
+    });
+    expect(defeatedByLowerGoal.state.bossHp).toBe(0);
+    expect(defeatedByLowerGoal.state.bossDefeated).toBe(true);
+    expect(defeatedByLowerGoal.state.streakDays).toBe(1);
+
+    const increasedGoal = syncHydration(loweredGoal.state, {
+      waterMl: 3000,
+      dailyGoalMl: 3000,
+    });
+    expect(increasedGoal.state.bossMaxHp).toBe(getBossMaxHp(3000));
+    expect(increasedGoal.state.bossHp).toBe(getBossMaxHp(3000) - GAME_CONFIG.attackDamage);
+    expect(increasedGoal.state.bossDefeated).toBe(false);
+  });
+
+  it('does not resurrect a completed battle when the goal changes again', () => {
+    let state = drink(day('2026-09-10', 500), 500);
+    while (canAttack(state).ok) state = attackBoss(state).state;
+
+    const changed = syncHydration(state, {
+      waterMl: 500,
+      dailyGoalMl: 3000,
+    });
+    expect(changed.state.bossDefeated).toBe(true);
+    expect(changed.state.bossHp).toBe(0);
+    expect(changed.state.bossMaxHp).toBe(getBossMaxHp(3000));
   });
 
   it('blocks attacks without enough energy', () => {

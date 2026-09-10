@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { GAME_CONFIG, GAME_STATE_SCHEMA_VERSION } from '../src/game/gameConfig';
 import { createDailyGameState } from '../src/game/gameRules';
 import { GameStateStore } from '../src/game/gameStateStore';
 
@@ -28,6 +29,62 @@ describe('GameStateStore', () => {
     store.save('user-a', state);
     expect(store.load('user-a')).toEqual(state);
     expect(store.load('user-b')).toBeNull();
+  });
+
+  it('migrates pre-versioned state by rebuilding daily battle fields', () => {
+    const current = createDailyGameState('2026-09-10', 2000);
+    const legacy = {
+      ...current,
+      schemaVersion: undefined,
+      configVersion: undefined,
+      points: 300,
+      chests: 2,
+      streakDays: 4,
+      waterEnergy: 700,
+      bossHp: 0,
+      bossDefeated: true,
+    };
+    storage.setItem('water_game_state:user-a', JSON.stringify(legacy));
+
+    const migrated = store.load('user-a');
+    expect(migrated?.schemaVersion).toBe(GAME_STATE_SCHEMA_VERSION);
+    expect(migrated?.configVersion).toBe(GAME_CONFIG.configVersion);
+    expect(migrated?.waterEnergy).toBe(0);
+    expect(migrated?.bossHp).toBe(migrated?.bossMaxHp);
+    expect(migrated?.bossDefeated).toBe(false);
+    expect(migrated?.points).toBe(300);
+    expect(migrated?.chests).toBe(2);
+    expect(migrated?.streakDays).toBe(4);
+  });
+
+  it('rebuilds daily battle fields when the balance config version changes', () => {
+    const current = createDailyGameState('2026-09-10', 2000);
+    storage.setItem(
+      'water_game_state:user-a',
+      JSON.stringify({
+        ...current,
+        configVersion: GAME_CONFIG.configVersion + 1,
+        points: 600,
+        chests: 3,
+        waterEnergy: 250,
+      }),
+    );
+
+    const migrated = store.load('user-a');
+    expect(migrated?.configVersion).toBe(GAME_CONFIG.configVersion);
+    expect(migrated?.waterEnergy).toBe(0);
+    expect(migrated?.bossHp).toBe(migrated?.bossMaxHp);
+    expect(migrated?.points).toBe(600);
+    expect(migrated?.chests).toBe(3);
+  });
+
+  it('does not guess how to load a future schema version', () => {
+    const current = createDailyGameState('2026-09-10', 2000);
+    storage.setItem(
+      'water_game_state:user-a',
+      JSON.stringify({ ...current, schemaVersion: GAME_STATE_SCHEMA_VERSION + 1 }),
+    );
+    expect(store.load('user-a')).toBeNull();
   });
 
   it('ignores corrupt or foreign payloads instead of throwing', () => {
