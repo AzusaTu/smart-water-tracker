@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" role="img" aria-labelledby="title desc">
+  <title id="title">深海戰鬥背景</title><desc id="desc">手機直式深海場景背景</desc>
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#0b3768"/><stop offset=".45" stop-color="#09294f"/><stop offset="1" stop-color="#04172e"/></linearGradient>
+    <radialGradient id="light" cx="50%" cy="0%" r="75%"><stop stop-color="#5fd7ff" stop-opacity=".3"/><stop offset="1" stop-color="#0b3768" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#sea)"/>
+  <rect width="1080" height="1120" fill="url(#light)"/>
+  <g fill="#2d78a8" opacity=".28">
+    <path d="M0 1300l130-145 126 94 128-193 151 128 148-219 164 188 117-103 116 117v753H0Z"/>
+    <path d="M0 1530l178-115 109 74 187-173 138 124 171-130 127 112 170-87v585H0Z" opacity=".55"/>
+  </g>
+  <g fill="#102b42">
+    <path d="M0 1695c93-57 161-85 230-45 61 35 103 12 159-18 89-48 167-34 247 20 70 46 128 22 213-18 77-36 150-13 231 33v253H0Z"/>
+    <path d="M84 1720l18-198 27-87 20 94 29-155 17 346ZM880 1735l14-156 27-120 22 125 24-189 21 340Z"/>
+  </g>
+  <g fill="none" stroke="#5edcff" stroke-width="8" opacity=".38">
+    <circle cx="170" cy="520" r="22"/><circle cx="208" cy="455" r="12"/><circle cx="853" cy="690" r="28"/><circle cx="901" cy="608" r="14"/><circle cx="720" cy="330" r="18"/><circle cx="753" cy="274" r="9"/>
+  </g>
+  <g fill="#8ceaff" opacity=".18"><circle cx="282" cy="780" r="7"/><circle cx="330" cy="708" r="10"/><circle cx="763" cy="890" r="8"/><circle cx="816" cy="824" r="6"/><circle cx="514" cy="500" r="5"/></g>
+</svg>
