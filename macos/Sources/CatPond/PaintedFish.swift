@@ -555,8 +555,9 @@ private struct FishPainter {
         }
         let crown = CGPoint(x: 288, y: 128)
         for (angle, length) in [(-160.0, 60.0), (-128, 72), (-96, 78), (-64, 70), (-30, 58)] {
-            let a = CGFloat(angle) * .pi / 180
-            leafFin(crown, crown.offset(cos(a) * length, sin(a) * length), width: 15, Color(hex: 0x86B86A), Color(hex: 0x4F8A3F))
+            let a: CGFloat = CGFloat(angle) * .pi / 180
+            let reach = CGFloat(length)
+            leafFin(crown, crown.offset(cos(a) * reach, sin(a) * reach), width: 15, Color(hex: 0x86B86A), Color(hex: 0x4F8A3F))
         }
         dab(Shapes.circle(crown.offset(0, -2), 9), Color(hex: 0x6E9F52), blur: 0.5)
         face(s, p)
